@@ -71,7 +71,12 @@ def process_corpus(corpus_paths, dict_words_path, output_path, limit=None, engin
                             # Skip lines that cause errors (though khmernltk is usually robust)
                             continue
                     elif engine == "internal":
-                        tokens = internal_segmenter.segment(line)
+                        try:
+                            tokens = internal_segmenter.segment(line)
+                        except ValueError as e:
+                            # Skip lines that cause segmentation errors
+                            continue
+
                     else:
                         raise ValueError(f"Unknown engine: {engine}")
 

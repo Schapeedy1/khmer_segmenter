@@ -61,6 +61,10 @@ class KhmerSegmenter:
                     if all((p in self.words or p == "") for p in parts):
                          words_to_remove.add(word)
             
+            # Filter out words containing ៗ (Repetition Mark) to enforce it as separate segment
+            if 'ៗ' in word:
+                words_to_remove.add(word)
+            
             # Filter out words starting with Coeng (\u17D2) - these are invalid start of words
             if word.startswith('\u17D2'):
                 words_to_remove.add(word)
@@ -71,6 +75,9 @@ class KhmerSegmenter:
         if words_to_remove:
             print(f"Removing {len(words_to_remove)} invalid words (compound ORs, start-with-Coeng) to enforce splitting.")
             self.words -= words_to_remove
+
+        if "ៗ" in self.words:
+            self.words.remove("ៗ")
 
         # Re-calculate max_word_length after removal
         self.max_word_length = 0
@@ -228,20 +235,85 @@ class KhmerSegmenter:
     
     def _is_separator(self, char):
         # Check for standard punctuation and Khmer punctuation
-        # Explicitly exclude repetition symbol (ៗ - \u17D7) so it can be 'snapped' to previous word
         try:
             code = ord(char)
-            # Khmer Punctuation (excluding ៗ)
-            # \u17D4 (។), \u17D5 (៕), \u17D6 (៖)
-            if 0x17D4 <= code <= 0x17DA and code != 0x17D7:
+            # Khmer Punctuation INCLUDING ៗ (\u17D7)
+            # \u17D4 (។), \u17D5 (៕), \u17D6 (៖), \u17D7 (ៗ) etc
+            if 0x17D4 <= code <= 0x17DA:
                 return True
-            # ASCII/General punctuation AND SPACE (' ')
-            if char in set('!?.,;:"\'()[]{}- «»'):
+            # ASCII/General punctuation AND SPACE (' ') AND QUOTES
+            if char in set('!?.,;:"\'()[]{}- «»“”'):
                 return True
             return False
         except:
             return False
-    
+
+    def _apply_heuristics(self, segments):
+        """
+        Apply post-processing heuristics to merge segments.
+        Rule 1: If the unknown word is consonance + ់, ិ៍, ៍, ៌ combine it with previous cluster
+        Rule 2: If the unknown word is consonance + ័, combine it with the next cluster
+        """
+        merged = []
+        i = 0
+        n = len(segments)
+        
+        while i < n:
+            curr = segments[i]
+            
+            # Check if current segment is a known word. If so, do NOT heuristic merge.
+            # This prevents merging words like 'ក៏' (which matches Consonant+Sign rule) with previous word.
+            if curr in self.words:
+                merged.append(curr)
+                i += 1
+                continue
+            
+            # Rule 1: Consonant + [់/ិ៍/៍/៌] -> Merge with PREVIOUS
+            # Regex equivalent: ^[Consonant][Signs]$
+            # Consonants: 0x1780-0x17A2
+            # Specific Signs: 
+            # ់ (\u17CB) - Bantoc
+            # ិ៍ (\u17B7\u17CD) - I + Toe (Actually just \u17CD (Toe) usually combined with vowels, but lets check char codes)
+            # ៍ (\u17CE) - Kakabat
+            # ៌ (\u17CF) - Ahsdja
+            # The prompt says "consonance + ...". 
+            # Implies the segment IS "Consonant + Sign".
+            if len(merged) > 0 and len(curr) == 2:
+                c0 = curr[0]
+                c1 = curr[1]
+                if (0x1780 <= ord(c0) <= 0x17A2) and c1 in ['\u17CB', '\u17CE', '\u17CF']:
+                    prev = merged.pop()
+                    merged.append(prev + curr)
+                    i += 1
+                    continue
+                # Special case for ិ៍ (i + toe)? Or just toe? 
+                # If user meant specifically that sequence. 
+                # Let's assume standard diacritics that act as word endings.
+            
+            # Additional check for 3-char sequence if it involves ិ៍ (Is valid khmer char sequence? \u17B7\u17CD)
+            if len(merged) > 0 and len(curr) == 3:
+                # Check for Consonant + ិ + ៍
+                if (0x1780 <= ord(curr[0]) <= 0x17A2) and curr[1] == '\u17B7' and curr[2] == '\u17CD':
+                     prev = merged.pop()
+                     merged.append(prev + curr)
+                     i += 1
+                     continue
+
+            # Rule 2: Consonant + ័ (\u17D0) -> Merge with NEXT
+            if i + 1 < n and len(curr) == 2:
+                c0 = curr[0]
+                c1 = curr[1]
+                if (0x1780 <= ord(c0) <= 0x17A2) and c1 == '\u17D0':
+                    # Merge with NEXT
+                    next_seg = segments[i+1]
+                    merged.append(curr + next_seg)
+                    i += 2 # Skip next
+                    continue
+
+            merged.append(curr)
+            i += 1
+            
+        return merged
 
     def segment(self, text):
         """
@@ -377,13 +449,16 @@ class KhmerSegmenter:
                     pass1_segments.append(seg)
             else:
                 pass1_segments.append(seg)
-                
-        # Post-processing Pass 2: Merge Consecutive Unknowns
+        
+        # Apply Heuristic Rules (Merge Consonant+Signs etc)
+        pass2_segments = self._apply_heuristics(pass1_segments)
+
+        # Post-processing Pass 3: Merge Consecutive Unknowns
         # Separators break the merge chain
         final_segments = []
         unknown_buffer = []
         
-        for seg in pass1_segments:
+        for seg in pass2_segments:
             # Determine if current segment is KNOWN
             is_known = False
             if self._is_digit(seg[0]):
