@@ -23,6 +23,13 @@ Critics of Viterbi often point out its "Blindness" to semantic context (long-ran
 *   It ensures that the segmenter never "imagines" words or slang not approved in your curated source.
 *   It provides a high-performance baseline (95% accuracy for standard text) for a fraction of the computational cost.
 
+### Bridging the Engineering Gap (Beyond Computer Science)
+In many engineering fields—such as **Robotics, UAV/Drone systems, and Industrial Embedded Control**—there is effectively **zero support** for the Khmer language. While Computer Science has moved toward massive Machine Learning models, these "modern" solutions are impossible to run on the low-level microcontrollers and embedded processors that power real-world machinery.
+
+This creates a digital divide: Khmer becomes a "computer-only" language, excluded from the hardware that engineers use every day. 
+
+`KhmerSegmenter` aims to break this barrier. By using the Viterbi algorithm—a purely mathematical and algorithmic approach—we provide a solution that can be implemented in **C, C++, or Rust** and run on devices with only a few megabytes (or even kilobytes) of memory. This project isn't just about NLP; it's about making Khmer a viable language for the next generation of physical engineering.
+
 Ultimately, `KhmerSegmenter` is designed for **portability and control**. It is the "Swiss Army Knife" of Khmer NLP—small, sharp, and reliable.
 
 ## Installation
