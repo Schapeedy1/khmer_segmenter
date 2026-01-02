@@ -14,7 +14,7 @@ pip install -r requirements.txt
 
 Before the segmenter works, it needs a statistical model of the language:
 
-1.  **Input Corpora**: The system reads raw Khmer text from files like `data/khmer_wiki_corpus.txt` and `data/khmer_folktales_extracted.txt`.
+1.  **Input Corpora**: The system reads raw Khmer text from files like `data/khmer_wiki_corpus.txt`, `data/khmer_folktales_extracted.txt`, and `data/allwords.txt`.
 2.  **Dictionary Filtering**: It loads `data/khmer_dictionary_words.txt` and filters out single-character words that are not in a predefined "Valid Single Consonant" whitelist (e.g., stopping random letters from being treated as words).
 3.  **Frequency Generation**:
     *   The `scripts/generate_frequencies.py` script supports two modes:
@@ -56,54 +56,55 @@ The core engine is a class `KhmerSegmenter` that uses **Viterbi Algorithm** (Dyn
 When `segment(text)` is called:
 
 #### Phase 1: Viterbi Forward Pass
-We maintain an array `dp[i]` representing the *minimum cost* to segment the text suffix ending at index `i`.
-We iterate `i` from `0` to `len(text)`. At each position `i`, we look forward to find potential next segments:
+The algorithm iterates through the text, finding the most probabilistic path where **Cost** = $-\log_{10}(Probability)$.
 
-**1. Number Grouping**
-*   **Check**: Is `text[i]` a digit (0-9 or ០-៩)?
-*   **Action**: Look ahead to consume all consecutive digits, including separators like `,` or `.` (e.g., `1,200.50`).
-*   **Cost**: Very low (prefer numbers staying together).
+**1. Input Cleaning**: Removes Zero Width Spaces (`\u200b`) to prevent segmentation interference.
 
-**2. Dictionary Match**
-*   **Check**: Does `text[i:j]` exist in our dictionary?
-*   **Action**: Loop `j` from `i+1` up to `min(len, i + max_word_length)`.
-*   **Cost**: The pre-calculated word cost.
+**2. Number & Currency Grouping (Highest Priority)**:
+*   **Logic**: Captures digits (Khmer/Arabic), separators (`,`, `.`), and units (e.g., `1 000 000`, `1,200.50`).
+*   **Currency**: Automatically groups **leading currency symbols** (e.g., `$50.00`) as a single token.
+*   **Cost**: Low penalty to ensure numbers stay together.
 
-**3. Unknown Cluster (Fallback)**
-*   **Check**: If it's not a dictionary word, what is the smallest valid "atomic" Khmer unit?
-*   **Logic**: A Khmer "cluster" is defined structurally:
-    *   `Base Consonant` + `(Coeng + Subscript)*` + `(Vowel/Diacritic)*`
-    *   Example: `ខ្មែ` is ONE cluster (`ខ` + `្` + `ម` + `ែ`).
-*   **Cost**: `Unknown Cost`.
-*   **Penalty**: If the cluster is a **single consonant** (e.g., `ក`) and NOT in our whitelist of valid single words (like `ក៏`, `នៃ` are valid, but `ក` is usually a prefix), add an **Extra Penalty**. This forces the algorithm to prefer combining it if possible (e.g., avoiding `ក` | `ការ` vs `កការ`).
+**3. Separator Handling**:
+*   **Logic**: Recognizes punctuation (`។`, `៕`, `៖`, `?`, `/`), symbols (`%`), and whitespace.
+*   **Exception**: Currency symbols are only treated as separators if they *don't* precede a number.
 
-**4. Repair Mode (Constraints)**
-*   **Rule**: A word cannot start with a subscript (Coeng `\u17D2`) or a dependent vowel.
-*   **Action**: If we find a "orphan" vowel or coeng at `i`, we enter **Repair Mode**: strictly consume 1 character with a HUUUGE penalty. This prevents getting stuck on typos like " ា".
+**4. Acronym Detection**:
+*   **Logic**: Identifies sequences of (Cluster + `.`) like `ស.ភ.ភ.ព.` or `គ.ម.` as single logical units.
+
+**5. Dictionary Match (Shortest Path)**:
+*   **Logic**: Matches words from the dictionary, including **automatically generated variants** for:
+    *   **Interchangeable Consonants**: `្ + ត` vs `្ + ដ` (Ta/Da).
+    - **Subscript Ordering**: Flexible ordering for `Coeng Ro` (e.g., `្រ` vs other subscripts).
+*   **Cost**: Derived from corpus frequency.
+
+**6. Unknown Cluster Fallback**:
+*   **Logic**: If no dictionary word matches, it falls back to a structural Khmer cluster.
+*   **Constraint**: Single consonants (e.g., `ក`) incur an **extra penalty** unless they are in a whitelist of valid single words (like `ក៏`, `នៃ`). This encourages merging with neighbors to avoid over-segmentation.
+
+**7. Robust Recovery (Repair Mode)**:
+*   **Problem**: Typos like "orphan" subscripts or vowels at the start of a boundary.
+*   **Action**: Strictly consumes 1 character with a high penalty to ensure the algorithm never crashes on malformed text.
 
 ---
 
-### Phase 2: Backtracking
-We trace back the path of `dp[N]` to `dp[0]` to get the raw list of segments.
-*   *Raw Output Example*: `["ខ្ញុំ", "ទៅ", "សាលា", "រ", "ៀ", "ន"]` (Hypothetical bad segmentation)
+#### Phase 2: Backtracking
+Traces the optimal path from the end of the text back to the beginning to produce the raw segments.
 
 ---
 
-### Phase 3: Post-Processing Steps
-The raw Viterbi output is good but often leaves small debris for unknown words or names.
+#### Phase 3: Post-Processing Rules
+The raw output is refined using linguistic heuristics:
 
-**Step A: Snap Invalid Singles**
-*   **Problem**: Typos or unknown names might result in loose consonants.
-*   **Rule**: If a segment is 1 character long AND NOT in `valid_single_words` AND NOT a digit/symbol:
-    *   **Action**: Attach it to the *previous* segment.
-*   **Example**: 
-    *   Raw: `["ឈ្មោះ", "ស", "៊", "ុ", "យ"]` (Bad scan of "Suy")
-    *   Process: `ស` is valid? No. Snap to `ឈ្មោះ` -> `["ឈ្មោះស", "៊", "ុ", "យ"]` ... proceeds ... eventually merges.
+**A. Snap Isolated Consonants**:
+*   Loose consonants (unknown names/typos) are attached to the previous word.
+*   **Exception**: If a consonant is explicitly surrounded by spaces or separators (e.g., `... , ក , ...`), it is preserved as an isolated unit.
 
-**Step B: Merge Consecutive Unknowns**
-*   **Problem**: Proper names (e.g., "សុវិជ្ជា") aren't in the dictionary. Viterbi might output `["សុ", "វិ", "ជ្ជា"]` (3 unknown clusters).
-*   **Action**: We group consecutive "Unknown" segments into one block.
-*   **Result**: `["សុវិជ្ជា"]`.
+**B. Heuristic Sign Merging**:
+*   Merges clusters with special ending signs (like `់`, `៍`, `៌`, `័`) that were not caught by the dictionary (common in names and loans).
+
+**C. Merge Consecutive Unknowns**:
+*   Groups multiple unknown clusters into a single logical "Unknown Block," typically representing a novel proper name or technical term.
 
 ## 3. Concrete Examples
 
@@ -148,22 +149,9 @@ python scripts/find_unknown_words.py --input segmentation_results.txt
 
 This will generate `data/unknown_words_from_results.txt` showing the unknown words, their frequency, and **context** (2 words before and after) to help you decide if they should be added to the dictionary.
 
-## 3. Supported Features
+## 4. Benchmark & Performance Comparison
 
-### Smart Segmentation
-*   **Numbers**: Automatically groups digits, separators (e.g., `1,234.50`) and space-separated integers (e.g. `1 000 000`).
-*   **Currency & Symbols**: Separates currency (e.g. `$`, `៛`) and percent (`%`) symbols from numbers.
-*   **Acronyms**: Recognizes complex Khmer acronyms (e.g. `គ.ម.`, `ច្រ.ប្រ.`) as single tokens.
-*   **Context for Single Consonants**: Prevents single consonants (e.g. `ក`) from being merged with neighbors if they are explicitly surrounded by separators or spaces.
-*   **Interchangeable Characters**:
-    *   **Coeng Ta/Da**: Recognizes words using either `្`+`ត` or `្`+`ដ` interchangeably.
-    *   **Coeng Ro**: Handles variable ordering of Coeng Ro relative to other subscripts.
-*   **Robustness**: Handles "orphan" subscripts (typos) without crashing.
-
-### Post-Processing Steps
-The raw Viterbi output is good but often leaves small debris for unknown words or names.
-
-**Results:**
+We compared `KhmerSegmenter` against `khmernltk` using real-world complex text:
 
 |Feature|khmernltk|KhmerSegmenter (Ours)|
 |:---|:---|:---|
@@ -181,17 +169,16 @@ The raw Viterbi output is good but often leaves small debris for unknown words o
 #### 1. Concurrency & Threading
 Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSegmenter` achieves **~497 calls/sec** vs `khmernltk`'s **~317 calls/sec**.
 *   **GIL Bottleneck**: In the current Python implementation, concurrent performance is restricted by the **Global Interpreter Lock (GIL)**. This means that while we use multiple threads, Python only executes one thread's bytecode at a time, limiting the speedup to roughly the efficiency of the underlying C-calls or I/O.
-*   **True Parallelism (Future Potential)**: Because our algorithm is purely mathematical and stateless (no complex model locking), porting it to a language without a GIL (like **C**, **C++**, **Rust**, or **Go**) would result in **dramatic performance increases**. In those environments, the 10 workers would run in true parallel across CPU cores, potentially reaching thousands or tens of thousands of calls per second.
-*   **Memory Efficiency**: `KhmerSegmenter` loads its dictionary structures once (~19 MB). `khmernltk` adds ~115 MB. In a threaded environment, both share memory, but `KhmerSegmenter`'s small footprint and lightweight arithmetic make it significantly easier to scale.
+*   **True Parallelism (Future Potential)**: Because our algorithm is purely mathematical and stateless (no complex model locking), porting it to a language without a GIL (like **C**, **C++**, **Rust**, or **Go**) would result in **dramatic performance increases**. In those environments, the 10 workers would run in true parallel across CPU cores.
+*   **Memory Efficiency**: `KhmerSegmenter` loads its dictionary structures once (~19.1 MB). `khmernltk` adds ~114.6 MB. In a threaded environment, both share memory, but `KhmerSegmenter`'s small footprint making it significantly easier to scale on memory-constrained containers.
 
-#### 2. Portability (Zero-Dependency)
-*   **KhmerSegmenter**: **Pure Python**. Requires **Zero** external dependencies (no `pip install` needed other than standard lib). It runs anywhere Python runs (Lambda, Edge devices, Windows/Linux/Mac) without compilation.
-*   **khmernltk**: Requires `sklearn-crfsuite` and `python-crfsuite`, which are **C++ extensions**. These require compilation or binary wheels, making deployment on restricted environments (e.g. Alpine Linux, WASM, specific embedded hardware) significantly harder.
+#### 2. Portability (Universal Compatibility)
+*   **KhmerSegmenter**: **Pure Python**. Requires **Zero** external dependencies beyond the standard library. It runs anywhere Python runs (Lambda, Edge devices, Windows/Linux/Mac) without compilation.
+*   **Language Agnostic**: The core algorithm consists of standard loops, array lookups, and arithmetic. It can be easily ported to **ANY** programming language (JavaScript, Rust, Go, Java, etc.).
+*   **Web & Edge Ready**: Perfect for client-side JavaScript execution (via WASM/Pyodide) or edge computing where low latency and small binary size are crucial.
 
 #### 3. Cold Start
-`KhmerSegmenter` initializes in **~0.2s**, whereas `khmernltk` takes **~1.8s+** to load its model. This makes `KhmerSegmenter` ideal for "Serverless" functions where startup latency matters.
-
-### Real-World Complex Sentence Example
+`KhmerSegmenter` initializes in **~0.22s**, whereas `khmernltk` takes **~1.8s+** to load its model. This makes `KhmerSegmenter` ideal for "Serverless" functions where startup latency is a primary billing and UX concern.
 
 ### Real-World Complex Sentence Example
 
@@ -202,7 +189,7 @@ Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSe
 > `ក្រុមហ៊ុន` | `ទទួល` | `បាន` | `ប្រាក់` | `ចំណូល` | ` ` | `១` | ` ` | `០០០` | ` ` | `០០០` | ` ` | `ដុល្លារ` | `ក្នុង` | `ឆ្នាំ` | `នេះ` | ` ` | `ខណៈ` | `ដែល` | `តម្លៃ` | `ភាគហ៊ុន` | `កើន` | `ឡើង` | ` ` | `៥` | `%` | ` ` | `ស្មើ` | `នឹង` | ` ` | `50.00` | `$` | `។` | ` ` | `លោក` | ` ` | `ទេព` | ` ` | `សុវិចិត្រ` | ` ` | `នាយក` | `ប្រតិបត្តិ` | `ដែល` | `បញ្ចប់` | `ការ` | `សិក្សា` | `ពី` | `សាកលវិទ្យាល័យ` | `ភូមិន្ទ` | `ភ្នំពេញ` | ` ` | `(` | `ស` | `.` | `ភ` | `.` | `ភ` | `.` | `ព` | `.` | `)` | ` ` | `បាន` | `ថ្លែង` | `ថា` | ` ` | `ភាព` | `ជោគជ័យ` | `ផ្នែក` | `ហិរញ្ញវត្ថុ` | `នា` | `ឆ្នាំ` | `នេះ` | ` ` | `គឺ` | `ជា` | `សក្ខីភាព` | `នៃ` | `កិច្ច` | `ខិតខំ` | `ប្រឹងប្រែង` | `របស់` | `ក្រុម` | `ការងារ` | `ទាំងមូល` | ` ` | `និង` | `ការ` | `ជឿ` | `ទុកចិត្ត` | `ពី` | `សំណាក់` | `វិនិយោគិន` | `។`
 
 **KhmerSegmenter Result (Ours):**
-> `ក្រុមហ៊ុន` | `ទទួលបាន` | `ប្រាក់ចំណូល` | ` ` | `១ ០០០ ០០០` | ` ` | `ដុល្លារ` | `ក្នុង` | `ឆ្នាំ` | `នេះ` | ` ` | `ខណៈដែល` | `តម្លៃ` | `ភាគហ៊ុន` | `កើនឡើង` | ` ` | `៥` | `%` | ` ` | `ស្មើនឹង` | ` ` | `50.00` | `$` | `។` | ` ` | `លោក` | ` ` | `ទេព` | ` ` | `សុវិចិត្រ` | ` ` | `នាយក` | `ប្រតិបត្តិ` | `ដែល` | `បញ្ចប់` | `ការសិក្សា` | `ពី` | `សាកលវិទ្យាល័យ` | `ភូមិន្ទ` | `ភ្នំពេញ` | ` ` | `(ស.ភ.ភ.ព.)` | ` ` | `បាន` | `ថ្លែង` | `ថា` | ` ` | `ភាពជោគជ័យ` | `ផ្នែក` | `ហិរញ្ញវត្ថុ` | `នា` | `ឆ្នាំ` | `នេះ` | ` ` | `គឺជា` | `សក្ខីភាព` | `នៃ` | `កិច្ចខិតខំប្រឹងប្រែង` | `របស់` | `ក្រុមការងារ` | `ទាំងមូល` | ` ` | `និង` | `ការជឿទុកចិត្ត` | `ពីសំណាក់` | `វិនិយោគិន` | `។`
+> `ក្រុមហ៊ុន` | `ទទួលបាន` | `ប្រាក់ចំណូល` | ` ` | `១ ០០០ ០០០` | ` ` | `ដុល្លារ` | `ក្នុង` | `ឆ្នាំ` | `នេះ` | ` ` | `ខណៈដែល` | `តម្លៃ` | `ភាគហ៊ុន` | `កើនឡើង` | ` ` | `៥` | `%` | ` ` | `ស្មើនឹង` | ` ` | `50.00` | `$` | `។` | ` ` | `លោក` | ` ` | `ទេព` | ` ` | `សុវិចិត្រ` | ` ` | `នាយក` | `ប្រតិបត្តិ` | `ដែល` | `បញ្ចប់` | `ការសិក្សា` | `ពី` | `សាកលវិទ្យាល័យ` | `ភូមិន្ទ` | `ភ្នំពេញ` | ` ` | `(ស.ភ.ភ.ព.)` | ` ` | `បាន` | `ថ្លែង` | `ថា` | ` ` | `ភាពជោគជ័យ` | `ផ្នែក` | `ហិរញ្ញវត្ថុ` | `នា` | `ឆ្នាំ` | `នេះ` | ` ` | `គឺជា` | `សក្ខីភាព` | `នៃ` | `កិច្ចខិតខំប្រឹងប្រែង` | `របស់` | `ក្រុមការងារ` | `ទាំងមូល` | ` ` | `និង` | `ការជឿទុកចិត្ត` | `ពីសំណាក់` | `វិនិយោគិន` | `។` 
 
 **Key Differences:**
 1.  **Numbers**: `khmernltk` splits `១ ០០០ ០០០` into 5 tokens. `KhmerSegmenter` keeps it as **one**.
