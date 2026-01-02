@@ -4,7 +4,7 @@ __pycache__/
 
 # Outputs
 segmentation_results.txt
-unknown_words_with_context.txt
+unknown_words_from_results.txt
 
 # IDE / System
 .vscode/

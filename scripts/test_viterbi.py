@@ -26,6 +26,7 @@ def test_segmentation():
         "ការអប់រំគឺសំខាន់ណាស់",
         "សាលារៀនយើង",
         "ញ៉ាំបាយនៅ?",
+        "ផ"
     ]
 
     print("\n--- Running Test Cases ---")

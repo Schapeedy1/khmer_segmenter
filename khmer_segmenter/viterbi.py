@@ -242,7 +242,8 @@ class KhmerSegmenter:
             if 0x17D4 <= code <= 0x17DA:
                 return True
             # ASCII/General punctuation AND SPACE (' ') AND QUOTES
-            if char in set('!?.,;:"\'()[]{}- «»“”'):
+            # Also include U+02DD (Double Acute Accent) which looks like a quote
+            if char in set('!?.,;:"\'()[]{}- «»“”˝'):
                 return True
             return False
         except:
