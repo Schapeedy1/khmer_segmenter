@@ -151,12 +151,14 @@ This will generate `data/unknown_words_from_results.txt` showing the unknown wor
 ## 3. Supported Features
 
 ### Smart Segmentation
-*   **Numbers**: Automatically groups digits and separators (e.g., `1,234.50`).
-*   **Acronyms**: Recognizes Khmer acronyms like `គ.ម.` (km) or `ព.ស.` (B.E.) as single tokens.
+*   **Numbers**: Automatically groups digits, separators (e.g., `1,234.50`) and space-separated integers (e.g. `1 000 000`).
+*   **Currency & Symbols**: Separates currency (e.g. `$`, `៛`) and percent (`%`) symbols from numbers.
+*   **Acronyms**: Recognizes complex Khmer acronyms (e.g. `គ.ម.`, `ច្រ.ប្រ.`) as single tokens.
+*   **Context for Single Consonants**: Prevents single consonants (e.g. `ក`) from being merged with neighbors if they are explicitly surrounded by separators or spaces.
 *   **Interchangeable Characters**:
-    *   **Coeng Ta/Da**: Recognizes words using either `្`+`ត` or `្`+`ដ` interchangeably (e.g., `សម្ដេច` vs `សម្តេច`).
-    *   **Coeng Ro**: Handles variable ordering of Coeng Ro relative to other subscripts (e.g., `ស្ត្រី` vs `ស្រ្តី`).
-*   **Robustness**: Handles "orphan" subscripts (typos) without crashing, treating them as unknown characters.
+    *   **Coeng Ta/Da**: Recognizes words using either `្`+`ត` or `្`+`ដ` interchangeably.
+    *   **Coeng Ro**: Handles variable ordering of Coeng Ro relative to other subscripts.
+*   **Robustness**: Handles "orphan" subscripts (typos) without crashing.
 
 ### Post-Processing Steps
 The raw Viterbi output is good but often leaves small debris for unknown words or names.
