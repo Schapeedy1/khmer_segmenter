@@ -138,8 +138,28 @@ The raw Viterbi output is good but often leaves small debris for unknown words o
 
 We compared the performance and output of `KhmerSegmenter` against `khmernltk` using a complex sentence from a folktale.
 
-**Sentence:**
-> ឯ​ខ្មាំង​សត្រូវ​ឃើញ​គង់ហ៊ាន​បំបោល​ដំរី​ចូល​ដូច្នោះ គិត​ស្មាន​ថា​មេទ័ព​នេះ​ពូកែ​ណាស់​ ក៏​បាក់​ទ័ព​ចាញ់ រត់​យក​តែ​ព្រះ​អាយុ​ដោយ​ខ្លួន​ទៅ ។
+### Finding Unknown Words
+
+You can analyze the segmentation results to find words that were not in the dictionary (potential new words or names):
+
+```bash
+python scripts/find_unknown_words.py --input segmentation_results.txt
+```
+
+This will generate `data/unknown_words_from_results.txt` showing the unknown words, their frequency, and **context** (2 words before and after) to help you decide if they should be added to the dictionary.
+
+## 3. Supported Features
+
+### Smart Segmentation
+*   **Numbers**: Automatically groups digits and separators (e.g., `1,234.50`).
+*   **Acronyms**: Recognizes Khmer acronyms like `គ.ម.` (km) or `ព.ស.` (B.E.) as single tokens.
+*   **Interchangeable Characters**:
+    *   **Coeng Ta/Da**: Recognizes words using either `្`+`ត` or `្`+`ដ` interchangeably (e.g., `សម្ដេច` vs `សម្តេច`).
+    *   **Coeng Ro**: Handles variable ordering of Coeng Ro relative to other subscripts (e.g., `ស្ត្រី` vs `ស្រ្តី`).
+*   **Robustness**: Handles "orphan" subscripts (typos) without crashing, treating them as unknown characters.
+
+### Post-Processing Steps
+The raw Viterbi output is good but often leaves small debris for unknown words or names.
 
 **Results:**
 
