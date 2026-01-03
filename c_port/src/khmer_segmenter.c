@@ -117,12 +117,15 @@ static int utf8_decode(const char* str, int* out_codepoint) {
         *out_codepoint = c;
         return 1;
     } else if ((c & 0xE0) == 0xC0) {
+        if (!str[1]) { *out_codepoint = 0; return 1; }
         *out_codepoint = ((c & 0x1F) << 6) | (str[1] & 0x3F);
         return 2;
     } else if ((c & 0xF0) == 0xE0) {
+        if (!str[1] || !str[2]) { *out_codepoint = 0; return 1; }
         *out_codepoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
         return 3;
     } else if ((c & 0xF8) == 0xF0) {
+        if (!str[1] || !str[2] || !str[3]) { *out_codepoint = 0; return 1; }
         *out_codepoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
         return 4;
     }
@@ -162,8 +165,23 @@ static int is_digit_cp(int cp) {
 static int is_separator_cp(int cp) {
     // Khmer Punctuation
     if (cp >= 0x17D4 && cp <= 0x17DA) return 1;
+    // Khmer Currency
+    if (cp == 0x17DB) return 1;
+
     // Basic ASCII Punctuation & Space
     if (cp < 0x80 && (ispunct(cp) || isspace(cp))) return 1;
+    
+    // Latin-1 Supplement Punctuation (Guillemets « » and others)
+    // 0xAB: «, 0xBB: »
+    if (cp == 0xAB || cp == 0xBB) return 1;
+    
+    // General Punctuation (0x2000-0x206F)
+    // Includes various spaces, dashes, quotes, bullets
+    if (cp >= 0x2000 && cp <= 0x206F) return 1;
+    
+    // Currency Symbols (0x20A0-0x20CF)
+    if (cp >= 0x20A0 && cp <= 0x20CF) return 1;
+
     return 0;
 }
 

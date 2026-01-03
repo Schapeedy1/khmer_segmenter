@@ -26,32 +26,241 @@ double get_memory_mb() {
 
 // --- Batch Processing ---
 
-void batch_process_file(KhmerSegmenter* seg, const char* filepath) {
-    if (!filepath) return;
+// --- Batch Processing (Multi-threaded) ---
+
+#define BATCH_CHUNK_SIZE 2000
+
+typedef struct {
+    KhmerSegmenter* seg;
+    char** lines;
+    char** results;
+    int count;
+    int thread_id;
+    int total_threads;
+} BatchWorkerArgs;
+
+DWORD WINAPI batch_worker(LPVOID lpParam) {
+    BatchWorkerArgs* args = (BatchWorkerArgs*)lpParam;
+    for (int i = args->thread_id; i < args->count; i += args->total_threads) {
+        // Initialize result to NULL first
+        args->results[i] = NULL;
+        if (args->lines[i]) {
+            args->results[i] = khmer_segmenter_segment(args->seg, args->lines[i], " | ");
+        }
+    }
+    return 0;
+}
+
+static char* read_line(FILE* f) {
+    size_t cap = 4096;
+    size_t len = 0;
+    char* data = (char*)malloc(cap);
+    if (!data) return NULL;
+
+    while (fgets(data + len, (int)(cap - len), f)) {
+        size_t read_len = strlen(data + len);
+        len += read_len;
+        if (data[len - 1] == '\n') break;
+        if (len + 1 >= cap) {
+            cap *= 2;
+            char* next_data = (char*)realloc(data, cap);
+            if (!next_data) {
+                free(data);
+                return NULL;
+            }
+            data = next_data;
+        }
+    }
+
+    if (len == 0) {
+        free(data);
+        return NULL;
+    }
+
+    // Strip trailing newline/cr
+    while (len > 0 && (data[len - 1] == '\r' || data[len - 1] == '\n')) {
+        data[--len] = '\0';
+    }
+
+    return data;
+}
+
+void batch_process_file(KhmerSegmenter* seg, const char* filepath, FILE* out, int threads_count, int* limit) {
+    if (!filepath || (*limit == 0)) return;
     FILE* f = fopen(filepath, "r");
     if (!f) {
-        printf("Error: Could not open file %s\n", filepath);
+        fprintf(stderr, "Error: Could not open file %s\n", filepath);
         return;
     }
 
-    char line[4096];
-    printf("Processing %s...\n", filepath);
-    while (fgets(line, sizeof(line), f)) {
-        // Strip newline
-        char* p = line;
-        while(*p) { if(*p=='\r' || *p=='\n') *p=0; else p++; }
-        if (!*line) continue;
-        
-        char* res = khmer_segmenter_segment(seg, line, " | ");
-        printf("Original:  %s\n", line);
-        printf("Segmented: %s\n", res);
-        printf("----------------------------------------\n");
-        free(res); // Important
+    fprintf(stderr, "Processing %s (Limit: %d)...\n", filepath, *limit);
+
+    char** lines = (char**)malloc(BATCH_CHUNK_SIZE * sizeof(char*));
+    char** results = (char**)calloc(BATCH_CHUNK_SIZE, sizeof(char*));
+    
+    int chunk_idx = 0;
+    int first_line = 1;
+
+    char* line;
+    while ((*limit != 0) && (line = read_line(f))) {
+        char* line_start = line;
+        if (*limit > 0) (*limit)--;
+        // Strip BOM if first line
+        if (first_line) {
+            unsigned char* ub = (unsigned char*)line;
+            if (ub[0] == 0xEF && ub[1] == 0xBB && ub[2] == 0xBF) {
+                line_start = _strdup(line + 3);
+                free(line);
+            } else {
+                line_start = line;
+            }
+            first_line = 0;
+        }
+
+        lines[chunk_idx++] = line_start;
+
+        if (chunk_idx >= BATCH_CHUNK_SIZE) {
+            // Process Chunk
+            if (threads_count <= 1) {
+                for(int i=0; i<chunk_idx; i++) {
+                    results[i] = khmer_segmenter_segment(seg, lines[i], " | ");
+                }
+            } else {
+                HANDLE* handles = (HANDLE*)malloc(threads_count * sizeof(HANDLE));
+                BatchWorkerArgs* args = (BatchWorkerArgs*)malloc(threads_count * sizeof(BatchWorkerArgs));
+                
+                for(int t=0; t<threads_count; t++) {
+                    args[t].seg = seg;
+                    args[t].lines = lines;
+                    args[t].results = results;
+                    args[t].count = chunk_idx;
+                    args[t].thread_id = t;
+                    args[t].total_threads = threads_count;
+                    handles[t] = CreateThread(NULL, 0, batch_worker, &args[t], 0, NULL);
+                }
+                WaitForMultipleObjects(threads_count, handles, TRUE, INFINITE);
+                for(int t=0; t<threads_count; t++) CloseHandle(handles[t]);
+                free(handles);
+                free(args);
+            }
+
+            // Print & Free
+            for(int i=0; i<chunk_idx; i++) {
+                fprintf(out, "Original:  %s\n", lines[i]);
+                fprintf(out, "Segmented: %s\n", results[i] ? results[i] : "");
+                fprintf(out, "----------------------------------------\n");
+                
+                free(lines[i]);
+                if (results[i]) free(results[i]);
+                results[i] = NULL;
+            }
+            chunk_idx = 0;
+        }
     }
+    
+    // Process remaining
+    if (chunk_idx > 0) {
+        if (threads_count <= 1) {
+            for(int i=0; i<chunk_idx; i++) {
+                results[i] = khmer_segmenter_segment(seg, lines[i], " | ");
+            }
+        } else {
+             HANDLE* handles = (HANDLE*)malloc(threads_count * sizeof(HANDLE));
+             BatchWorkerArgs* args = (BatchWorkerArgs*)malloc(threads_count * sizeof(BatchWorkerArgs));
+             
+             for(int t=0; t<threads_count; t++) {
+                 args[t].seg = seg;
+                 args[t].lines = lines;
+                 args[t].results = results;
+                 args[t].count = chunk_idx;
+                 args[t].thread_id = t;
+                 args[t].total_threads = threads_count;
+                 handles[t] = CreateThread(NULL, 0, batch_worker, &args[t], 0, NULL);
+             }
+             WaitForMultipleObjects(threads_count, handles, TRUE, INFINITE);
+             for(int t=0; t<threads_count; t++) CloseHandle(handles[t]);
+             free(handles);
+             free(args);
+        }
+
+        for(int i=0; i<chunk_idx; i++) {
+            fprintf(out, "Original:  %s\n", lines[i]);
+            fprintf(out, "Segmented: %s\n", results[i] ? results[i] : "");
+            fprintf(out, "----------------------------------------\n");
+            free(lines[i]);
+            if (results[i]) free(results[i]);
+        }
+    }
+
+    free(lines);
+    free(results);
     fclose(f);
 }
 
 // --- Benchmark ---
+
+void run_input_benchmark(KhmerSegmenter* seg, char** lines, int count, int threads, FILE* out) {
+    if (count <= 0) return;
+    
+    char** results = (char**)calloc(count, sizeof(char*));
+    fprintf(stderr, "\n--- Input Benchmark (%d lines) ---\n", count);
+    
+    // 1. Sequential (1 Thread)
+    fprintf(stderr, "[1 Thread] Processing...");
+    double start = get_time_sec();
+    for (int i=0; i<count; i++) {
+        results[i] = khmer_segmenter_segment(seg, lines[i], " | ");
+    }
+    double end = get_time_sec();
+    double dur_seq = end - start;
+    if (dur_seq < 0.001) dur_seq = 0.001; 
+    fprintf(stderr, " Done in %.3fs (%.2f lines/sec)\n", dur_seq, (double)count / dur_seq);
+    
+    // Save results to file if output is open
+    if (out) {
+        fprintf(stderr, "Saving results to output file...\n");
+        for (int i=0; i<count; i++) {
+            fprintf(out, "Original:  %s\n", lines[i]);
+            fprintf(out, "Segmented: %s\n", results[i] ? results[i] : "");
+            fprintf(out, "----------------------------------------\n");
+        }
+    }
+    
+    // Free results to reuse array for multi-threaded run
+    for(int i=0; i<count; i++) { if(results[i]) free(results[i]); results[i] = NULL; }
+    
+    // 2. Multi-threaded run
+    if (threads > 1) {
+        fprintf(stderr, "[%d Threads] Processing...", threads);
+        start = get_time_sec();
+        
+        HANDLE* handles = (HANDLE*)malloc(threads * sizeof(HANDLE));
+        BatchWorkerArgs* args = (BatchWorkerArgs*)malloc(threads * sizeof(BatchWorkerArgs));
+        
+        for(int t=0; t<threads; t++) {
+            args[t].seg = seg;
+            args[t].lines = lines;
+            args[t].results = results;
+            args[t].count = count;
+            args[t].thread_id = t;
+            args[t].total_threads = threads;
+            handles[t] = CreateThread(NULL, 0, batch_worker, &args[t], 0, NULL);
+        }
+        WaitForMultipleObjects(threads, handles, TRUE, INFINITE);
+        for(int t=0; t<threads; t++) CloseHandle(handles[t]);
+        free(handles);
+        free(args);
+        
+        end = get_time_sec();
+        double dur_conc = end - start;
+        if (dur_conc < 0.001) dur_conc = 0.001;
+        fprintf(stderr, " Done in %.3fs (%.2f lines/sec)\n", dur_conc, (double)count / dur_conc);
+        fprintf(stderr, "Speedup: %.2fx\n", dur_seq / dur_conc);
+    }
+    
+    for(int i=0; i<count; i++) { if(results[i]) free(results[i]); }
+    free(results);
+}
 
 typedef struct {
     KhmerSegmenter* seg;
@@ -68,11 +277,14 @@ DWORD WINAPI benchmark_worker(LPVOID lpParam) {
     return 0;
 }
 
-void run_benchmark(KhmerSegmenter* seg, int threads_count) {
-    const char* text = "ក្រុមហ៊ុនទទួលបានប្រាក់ចំណូល ១ ០០០ ០០០ ដុល្លារក្នុងឆ្នាំនេះ ខណៈដែលតម្លៃភាគហ៊ុនកើនឡើង ៥% ស្មើនឹង 50.00$។"
-                    "លោក ទេព សុវិចិត្រ នាយកប្រតិបត្តិដែលបញ្ចប់ការសិក្សាពីសាកលវិទ្យាល័យភូមិន្ទភ្នំពេញ (ស.ភ.ភ.ព.) "
-                    "បានថ្លែងថា ភាពជោគជ័យផ្នែកហិរញ្ញវត្ថុនាឆ្នាំនេះ គឺជាសក្ខីភាពនៃកិច្ចខិតខំប្រឹងប្រែងរបស់ក្រុមការងារទាំងមូល "
-                    "និងការជឿទុកចិត្តពីសំណាក់វិនិយោគិន។";
+void run_benchmark(KhmerSegmenter* seg, int threads_count, const char* custom_text) {
+    const char* text = custom_text;
+    if (!text) {
+        text = "ក្រុមហ៊ុនទទួលបានប្រាក់ចំណូល ១ ០០០ ០០០ ដុល្លារក្នុងឆ្នាំនេះ ខណៈដែលតម្លៃភាគហ៊ុនកើនឡើង ៥% ស្មើនឹង 50.00$។"
+               "លោក ទេព សុវិចិត្រ នាយកប្រតិបត្តិដែលបញ្ចប់ការសិក្សាពីសាកលវិទ្យាល័យភូមិន្ទភ្នំពេញ (ស.ភ.ភ.ព.) "
+               "បានថ្លែងថា ភាពជោគជ័យផ្នែកហិរញ្ញវត្ថុនាឆ្នាំនេះ គឺជាសក្ខីភាពនៃកិច្ចខិតខំប្រឹងប្រែងរបស់ក្រុមការងារទាំងមូល "
+               "និងការជឿទុកចិត្តពីសំណាក់វិនិយោគិន។";
+    }
     int iterations_seq = 1000;
     int iterations_conc = 5000;
     
@@ -82,7 +294,9 @@ void run_benchmark(KhmerSegmenter* seg, int threads_count) {
 
     // 1. Warmup / Output Check
     char* check = khmer_segmenter_segment(seg, text, " | ");
-    printf("\n[Output Check]\n%s\n", check);
+    if (strlen(text) < 1000) {
+        printf("\n[Output Check]\n%s\n", check);
+    }
     free(check);
 
     // 2. Sequential
@@ -139,10 +353,6 @@ void run_benchmark(KhmerSegmenter* seg, int threads_count) {
 // --- Main ---
 
 int main() {
-    // Windows Console Setup
-    #ifdef _WIN32
-    SetConsoleOutputCP(65001);
-    #endif
     setbuf(stdout, NULL);
 
     int argc;
@@ -159,64 +369,129 @@ int main() {
     
     // Config
     int mode_benchmark = 0;
-    char* input_file = NULL;
+    char** input_files = NULL;
+    int input_files_count = 0;
+    char* output_file = NULL;
     char* input_text = NULL;
     int threads = 4;
+    int limit = -1;
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--benchmark") == 0) {
             mode_benchmark = 1;
-        } else if (strcmp(argv[i], "--file") == 0 && i+1 < argc) {
-            input_file = argv[++i];
+        } else if (strcmp(argv[i], "--input") == 0 || strcmp(argv[i], "--file") == 0) {
+            while (i + 1 < argc && argv[i+1][0] != '-') {
+                input_files = (char**)realloc(input_files, sizeof(char*) * (input_files_count + 1));
+                input_files[input_files_count++] = argv[++i];
+            }
+        } else if (strcmp(argv[i], "--output") == 0 && i+1 < argc) {
+            output_file = argv[++i];
         } else if (strcmp(argv[i], "--threads") == 0 && i+1 < argc) {
             threads = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--limit") == 0 && i+1 < argc) {
+            limit = atoi(argv[++i]);
         } else if (argv[i][0] != '-') {
             input_text = argv[i]; // Treat positional as text
         }
     }
 
-    printf("Initializing segmenter...\n");
-    // Look for dictionary in probable locations
-    const char* dict_path = "../data/khmer_dictionary_words.txt";
-    const char* freq_path = "../data/khmer_word_frequencies.json"; // Not fully used yet but consistent API
+    if (input_files_count > 0 && !output_file) {
+        output_file = "segmentation_results.txt";
+    }
     
-    // Check if file exists, else try local
+    // Check for dictionary in probable locations
+    const char* dict_path = "../data/khmer_dictionary_words.txt";
+    const char* freq_path = "../data/khmer_word_frequencies.json"; 
+    
     FILE* check = fopen(dict_path, "r");
     if (!check) {
-        dict_path = "khmer_dictionary_words.txt"; // try current dir
+        dict_path = "khmer_dictionary_words.txt"; 
     } else {
         fclose(check);
+    }
+    
+    if (mode_benchmark || input_files_count > 0) {
+        fprintf(stderr, "Initializing segmenter (Dict: %s)...\n", dict_path);
     }
 
     KhmerSegmenter* seg = khmer_segmenter_init(dict_path, freq_path);
     if (!seg) {
-        printf("Failed to init segmenter.\n");
+        fprintf(stderr, "Failed to init segmenter.\n");
         return 1;
     }
-    printf("Initialization complete.\n");
+    
+    if (mode_benchmark || input_files_count > 0) {
+       fprintf(stderr, "Initialization complete.\n");
+    }
 
     if (mode_benchmark) {
-        run_benchmark(seg, threads);
-    } else if (input_file) {
-        batch_process_file(seg, input_file);
+        if (input_files_count > 0) {
+            char** lines = NULL;
+            int count = 0;
+            int temp_limit = limit;
+            for (int i = 0; i < input_files_count && (limit == -1 || temp_limit > 0); i++) {
+                FILE* f = fopen(input_files[i], "r");
+                if (f) {
+                    char* line;
+                    while ((temp_limit != 0) && (line = read_line(f))) {
+                        lines = (char**)realloc(lines, sizeof(char*) * (count + 1));
+                        lines[count++] = line;
+                        if (temp_limit > 0) temp_limit--;
+                    }
+                    fclose(f);
+                }
+            }
+            
+            FILE* out = NULL;
+            if (output_file) {
+                out = fopen(output_file, "w");
+            }
+            
+            run_input_benchmark(seg, lines, count, threads, out);
+            
+            if (out) fclose(out);
+            for(int i=0; i<count; i++) free(lines[i]);
+            free(lines);
+        } else {
+            run_benchmark(seg, threads, NULL);
+        }
+    } else if (input_files_count > 0) {
+        FILE* out = stdout;
+        if (output_file) {
+            out = fopen(output_file, "w");
+            if (!out) {
+                fprintf(stderr, "Error: Could not open output file %s\n", output_file);
+                out = stdout;
+            }
+        }
+        
+        int current_limit = limit;
+        for (int i = 0; i < input_files_count; i++) {
+            batch_process_file(seg, input_files[i], out, threads, &current_limit);
+            if (current_limit == 0) break;
+        }
+        
+        if (output_file && out != stdout) fclose(out);
     } else if (input_text) {
         char* res = khmer_segmenter_segment(seg, input_text, " | ");
         printf("Input: %s\n", input_text);
         printf("Output: %s\n", res);
         free(res);
     } else {
-        printf("Usage: khmer_segmenter.exe [files/text...]\n");
-        printf("  --benchmark       Run benchmark suite\n");
-        printf("  --threads <N>     Set threads for benchmark\n");
-        printf("  --file <path>     Process lines from file\n");
+        printf("Usage: khmer_segmenter.exe [flags] [text]\n");
+        printf("  --input <path...> Multiple input files\n");
+        printf("  --output <path>   Output file path\n");
+        printf("  --limit <N>       Limit total lines processed\n");
+        printf("  --threads <N>     Number of threads (default: 4)\n");
+        printf("  --benchmark       Run benchmark (uses --input if provided)\n");
         printf("  <text>            Process raw text\n");
     }
 
     khmer_segmenter_free(seg);
-    LocalFree(argvw); // Free Windows Arg list
-    // Free our argv conversions
+    LocalFree(argvw); 
     for(int i=0; i<argc; i++) free(argv[i]);
     free(argv);
+    if (input_files) free(input_files);
     
     return 0;
 }

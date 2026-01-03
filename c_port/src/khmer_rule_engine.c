@@ -76,27 +76,46 @@ struct RuleEngine {
 
 // --- Helpers ---
 
-static int is_separator(const char* s) {
-    unsigned char c = (unsigned char)s[0];
-    if (ispunct(c) || isspace(c)) return 1;
-    
-    if (c >= 0x80) {
-        // \u17D4 (។) is E1 9F 94
-        if (memcmp(s, "\xE1\x9F\x94", 3) == 0) return 1; 
-        if (memcmp(s, "\xE1\x9F\x95", 3) == 0) return 1; 
+// Copied from khmer_segmenter.c for consistency (or should be shared in util)
+static int utf8_decode_re(const char* str, int* out_codepoint) {
+    unsigned char c = (unsigned char)str[0];
+    if (c < 0x80) { *out_codepoint = c; return 1; }
+    else if ((c & 0xE0) == 0xC0) { 
+        if (!str[1]) { *out_codepoint = 0; return 1; }
+        *out_codepoint = ((c & 0x1F) << 6) | (str[1] & 0x3F); return 2; 
     }
+    else if ((c & 0xF0) == 0xE0) { 
+        if (!str[1] || !str[2]) { *out_codepoint = 0; return 1; }
+        *out_codepoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F); return 3; 
+    }
+    else if ((c & 0xF8) == 0xF0) { 
+        if (!str[1] || !str[2] || !str[3]) { *out_codepoint = 0; return 1; }
+        *out_codepoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F); return 4; 
+    }
+    *out_codepoint = 0; return 1;
+}
+
+static int is_separator(const char* s) {
+    int cp;
+    utf8_decode_re(s, &cp);
+    
+    // Check against same rules as khmer_segmenter.c
+    if (cp >= 0x17D4 && cp <= 0x17DA) return 1; // Khmer Punct
+    if (cp == 0x17DB) return 1; // Khmer Currency
+    
+    if (cp < 0x80 && (ispunct(cp) || isspace(cp))) return 1; // ASCII
+    
+    if (cp == 0xAB || cp == 0xBB) return 1; // « »
+    if (cp >= 0x2000 && cp <= 0x206F) return 1; // General Punctuation
+    if (cp >= 0x20A0 && cp <= 0x20CF) return 1; // Currency Symbols
+    
     return 0; 
 }
 
 static int is_invalid_single(const char* s) {
     int cp;
-    unsigned char c = (unsigned char)s[0];
-    int len = 0;
-    if (c < 0x80) { cp = c; len=1; }
-    else if ((c&0xE0)==0xC0) { cp=((c&0x1F)<<6)|(s[1]&0x3F); len=2; }
-    else if ((c&0xF0)==0xE0) { cp=((c&0x0F)<<12)|((s[1]&0x3F)<<6)|(s[2]&0x3F); len=3; }
-    else if ((c&0xF8)==0xF0) { cp=((c&0x07)<<18)|((s[1]&0x3F)<<12)|((s[2]&0x3F)<<6)|(s[3]&0x3F); len=4; }
-    else { return 0; } // Invalid UTF8?
+    int len = utf8_decode_re(s, &cp);
+    if (!cp) return 0;
     
     if (s[len] != 0) return 0; // More than 1 char -> valid cluster/word
     

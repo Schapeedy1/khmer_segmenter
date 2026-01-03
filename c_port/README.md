@@ -37,29 +37,42 @@ zig build -Doptimize=ReleaseFast
 
 ## Usage
 
-The executable supports direct text input, file processing, and benchmarking.
+The executable supports direct text input, multi-file processing, and benchmarking.
+
+### Common Flags
+- `--input <path...>`: Path to one or more input files. (Alias: `--file`)
+- `--output <path>`: Path to save result (defaults to `segmentation_results.txt` if `--input` is used).
+- `--threads <N>`: Number of threads for batch processing or benchmark (default: 4).
+- `--limit <N>`: Stop processing after $N$ lines across all input files.
+- `--benchmark`: Run performance suite. Can be combined with `--input`.
 
 ### Segment Raw Text
-Use custom separator (default is specialized pipe/space if not specified, but the CLI wrapper typically joins with ` | `).
 ```bash
-# Windows
+# Direct text input via CLI
 .\zig-out\bin\khmer_segmenter.exe "ខ្ញុំស្រឡាញ់ប្រទេសកម្ពុជា"
 
 # Output: ខ្ញុំ | ស្រឡាញ់ | ប្រទេស | កម្ពុជា
 ```
 
 ### Batch File Processing
-Process a file line-by-line and print segmented output to stdout.
+Process one or more files and save to a single output file.
 ```bash
-.\zig-out\bin\khmer_segmenter.exe --file input.txt > output.txt
+# Process multiple files with 8 threads and a limit of 1000 lines
+.\zig-out\bin\khmer_segmenter.exe --input file1.txt file2.txt --output results.txt --threads 8 --limit 1000
 ```
 
-### Run Benchmark
-Run the built-in performance suite (Sequential and Multi-threaded).
+### Benchmarking
+Run performance tests using the built-in sample or your own data.
 ```bash
-# Run with 4 threads
-.\zig-out\bin\khmer_segmenter.exe --benchmark --threads 4
+# Use built-in sample text
+.\zig-out\bin\khmer_segmenter.exe --benchmark --threads 10
+
+# Benchmark using your actual data
+.\zig-out\bin\khmer_segmenter.exe --input corpus.txt --benchmark --threads 12 --limit 5000 --output segmented_benchmark.txt
 ```
+> [!NOTE]
+> When `--benchmark` is used with `--input`, it runs both Sequential (1-thread) and Concurrent (N-threads) benchmarks on the provided text and saves the segmented results to the `--output` path.
+
 
 ## Performance Comparison
 

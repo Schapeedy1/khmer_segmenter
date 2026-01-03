@@ -46,9 +46,18 @@ struct re_t {
 static int utf8_decode_re(const char* str, int* out_codepoint) {
     unsigned char c = (unsigned char)str[0];
     if (c < 0x80) { *out_codepoint = c; return 1; }
-    if ((c & 0xE0) == 0xC0) { *out_codepoint = ((c & 0x1F) << 6) | (str[1] & 0x3F); return 2; }
-    if ((c & 0xF0) == 0xE0) { *out_codepoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F); return 3; }
-    if ((c & 0xF8) == 0xF0) { *out_codepoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F); return 4; }
+    if ((c & 0xE0) == 0xC0) { 
+        if (!str[1]) { *out_codepoint = 0; return 1; }
+        *out_codepoint = ((c & 0x1F) << 6) | (str[1] & 0x3F); return 2; 
+    }
+    if ((c & 0xF0) == 0xE0) { 
+        if (!str[1] || !str[2]) { *out_codepoint = 0; return 1; }
+        *out_codepoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F); return 3; 
+    }
+    if ((c & 0xF8) == 0xF0) { 
+        if (!str[1] || !str[2] || !str[3]) { *out_codepoint = 0; return 1; }
+        *out_codepoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F); return 4; 
+    }
     *out_codepoint = 0; return 1;
 }
 
