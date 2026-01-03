@@ -90,8 +90,8 @@ Before segmentation begins, the text passes through a **Khmer-specific Normaliza
 
 1.  **Composite Vowel Merging**: 
     Automatically merges split vowel components into single canonical Unicode points:
-    *   `E` (`\u17C1`) + `I` (`\u17B8`) $\rightarrow$ **OE** (`\u17BE`)
-    *   `E` (`\u17C1`) + `AA` (`\u17B6`) $\rightarrow$ **AU** (`\u17C4`)
+    *   `េ` (`\u17C1`) + `ី` (`\u17B8`) $\rightarrow$ **ើ** (`\u17BE`)
+    *   `េ` (`\u17C1`) + `ា` (`\u17B6`) $\rightarrow$ **ោ** (`\u17C4`)
 
 2.  **Cluster-Based Canonical Reordering**:
     The normalizer parses text into linguistic clusters and strictly enforces the following Unicode order:
@@ -256,11 +256,11 @@ We compared `KhmerSegmenter` against `khmernltk` using real-world complex text:
 
 |Feature|khmernltk|KhmerSegmenter (Ours)|
 |:---|:---|:---|
-|**Cold Start (Load)**|~1.83s|**~0.27s** (6x Faster)|
-|**Memory Usage (Load)**|~114.6 MB|**~21.6 MB** (5x Leaner)|
-|**Execution Speed (Seq)**|~2.88ms / call|**~2.17ms / call** (1.3x Faster)|
-|**Concurrent (10 Workers)**|~309 calls / sec|**~467 calls / sec** (1.5x Faster)|
-|**Concurrent Memory Delta**|~10.5 MB|~22.1 MB (High Throughput)|
+|**Cold Start (Load)**|~1.83s|**~0.30s** (6x Faster)|
+|**Memory Usage (Load)**|~113.6 MB|**~21.6 MB** (5x Leaner)|
+|**Execution Speed (Seq)**|~3.02ms / call|**~2.08ms / call** (1.4x Faster)|
+|**Concurrent (10 Workers)**|~318 calls / sec|**~447 calls / sec** (1.4x Faster)|
+|**Concurrent Memory Delta**|~12.1 MB|~19.0 MB (High Throughput)|
 |**Complex Input**|`ក្រុមហ៊ុន... ១ ០០០ ០០០... (ស.ភ.ភ.ព.)`|`ក្រុមហ៊ុន... ១ ០០០ ០០០... (ស.ភ.ភ.ព.)`|
 |**Segmentation**|`១` \| `០០០` \| `០០០` \| `(` \| `ស` \| `.` \| `ភ` \| ...|`១ ០០០ ០០០` \| `(ស.ភ.ភ.ព.)`|
 |**Characteristics**|Tends to split numbers, symbols, and acronyms.|**Correctly groups** space-separated numbers, currencies, and complex acronyms.|
@@ -268,7 +268,7 @@ We compared `KhmerSegmenter` against `khmernltk` using real-world complex text:
 ### Performance & Portability Analysis
 
 #### 1. Concurrency & Threading
-Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSegmenter` achieves **~467 calls/sec** vs `khmernltk`'s **~309 calls/sec**.
+Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSegmenter` achieves **~447 calls/sec** vs `khmernltk`'s **~318 calls/sec**.
 *   **GIL Bottleneck**: In the current Python implementation, concurrent performance is restricted by the **Global Interpreter Lock (GIL)**. This means that while we use multiple threads, Python only executes one thread's bytecode at a time, limiting the speedup to roughly the efficiency of the underlying C-calls or I/O.
 *   **True Parallelism (Future Potential)**: Because our algorithm is purely mathematical and stateless (no complex model locking), porting it to a language without a GIL (like **C**, **C++**, **Rust**, or **Go**) would result in **dramatic performance increases**. In those environments, the 10 workers would run in true parallel across CPU cores.
 *   **Memory Efficiency**: `KhmerSegmenter` loads its dictionary structures once (~21.6 MB). `khmernltk` adds ~114.6 MB. In a threaded environment, both share memory, but `KhmerSegmenter`'s small footprint making it significantly easier to scale on memory-constrained containers.
@@ -279,7 +279,7 @@ Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSe
 *   **Web & Edge Ready**: Perfect for client-side JavaScript execution (via WASM/Pyodide) or edge computing where low latency and small binary size are crucial.
 
 #### 3. Cold Start
-`KhmerSegmenter` initializes in **~0.27s**, whereas `khmernltk` takes **~1.8s+** to load its model. This makes `KhmerSegmenter` ideal for "Serverless" functions where startup latency is a primary billing and UX concern.
+`KhmerSegmenter` initializes in **~0.30s**, whereas `khmernltk` takes **~1.8s+** to load its model. This makes `KhmerSegmenter` ideal for "Serverless" functions where startup latency is a primary billing and UX concern.
 
 ### Real-World Complex Sentence Example
 
@@ -290,12 +290,12 @@ Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSe
 > `ក្រុមហ៊ុន` | `ទទួលបាន` | `ប្រាក់` | `ចំណូល` | ` ` | `១` | ` ` | `០០០` | ` ` | `០០០` | ` ` | `ដុល្លារ` | `ក្នុង` | `ឆ្នាំ` | `នេះ` | ` ` | `ខណៈ` | `ដែល` | `តម្លៃ` | `ភាគហ៊ុន` | `កើនឡើង` | ` ` | `៥%` | ` ` | `ស្មើនឹង` | ` ` | `50.` | `00$` | `។` | ` ` | `លោក` | ` ` | `ទេព` | ` ` | `សុវិចិត្រ` | ` ` | `នាយក` | `ប្រតិបត្តិ` | `ដែល` | `បញ្ចប់` | `ការសិក្សា` | `ពី` | `សាកលវិទ្យាល័យ` | `ភូមិន្ទ` | `ភ្នំពេញ` | ` ` | `(` | `ស.` | `ភ.` | `ភ.` | `ព.` | `)` | ` ` | `បាន` | `ថ្លែង` | `ថា` | ` ` | `ភាពជោគជ័យ` | `ផ្នែក` | `ហិរញ្ញវត្ថុ` | `នា` | `ឆ្នាំ` | `នេះ` | ` ` | `គឺជា` | `សក្ខីភាព` | `នៃ` | `កិច្ច` | `ខិតខំ` | `ប្រឹងប្រែង` | `របស់` | `ក្រុមការងារ` | `ទាំងមូល` | ` ` | `និង` | `ការជឿទុកចិត្ត` | `ពីសំណាក់` | `វិនិយោគិន` | `។`
 
 **KhmerSegmenter Result (Ours):**
-> `ក្រុមហ៊ុន` | `ហុ៊ន` | `ទទួល` | `បាន` | `ប្រាក់ចំណូល` | ` ` | `១ ០០០ ០០០` | ` ` | `ដុល្លារ` | `ក្នុង` | `ឆ្នាំ` | `នេះ` | ` ` | `ខណៈ` | `ដែល` | `តម្លៃ` | `ភាគ` | `ហុ៊ន` | `កើនឡើង` | ` ` | `៥` | `%` | ` ` | `ស្មើនឹង` | ` ` | `50.00` | `$` | `។` | ` ` | `លោក` | ` ` | `ទេព` | ` ` | `សុវិចិត្រ` | ` ` | `នាយក` | `ប្រតិបត្តិ` | `ដែល` | `បញ្ចប់` | `ការសិក្សា` | `ពី` | `សាកលវិទ្យាល័យ` | `ភូមិន្ទ` | `ភ្នំពេញ` | ` ` | `(` | `ស.ភ.ភ.ព.` | `)` | ` ` | `បាន` | `ថ្លែង` | `ថា` | ` ` | `ភាព` | `ជោគជ័យ` | `ផ្នែក` | `ហិរញ្ញវត្ថុ` | `នា` | `ឆ្នាំ` | `នេះ` | ` ` | `គឺជា` | `សក្ខីភាព` | `នៃ` | `កិច្ច` | `ខិតខំ` | `ប្រឹងប្រែង` | `របស់` | `ក្រុមការងារ` | `ទាំងមូល` | ` ` | `និង` | `ការ` | `ជឿ` | `ទុកចិត្ត` | `ពីសំណាក់` | `វិនិយោគិន` | `។`
+> `ក្រុមហ៊ុន` | `ទទួល` | `បាន` | `ប្រាក់ចំណូល` | ` ` | `១ ០០០ ០០០` | ` ` | `ដុល្លារ` | `ក្នុង` | `ឆ្នាំ` | `នេះ` | ` ` | `ខណៈ` | `ដែល` | `តម្លៃ` | `ភាគហ៊ុន` | `កើនឡើង` | ` ` | `៥` | `%` | ` ` | `ស្មើនឹង` | ` ` | `50.00` | `$` | `។` | ` ` | `លោក` | ` ` | `ទេព` | ` ` | `សុវិចិត្រ` | ` ` | `នាយក` | `ប្រតិបត្តិ` | `ដែល` | `បញ្ចប់` | `ការសិក្សា` | `ពី` | `សាកលវិទ្យាល័យ` | `ភូមិន្ទ` | `ភ្នំពេញ` | ` ` | `(` | `ស.ភ.ភ.ព.` | `)` | ` ` | `បាន` | `ថ្លែង` | `ថា` | ` ` | `ភាព` | `ជោគជ័យ` | `ផ្នែក` | `ហិរញ្ញវត្ថុ` | `នា` | `ឆ្នាំ` | `នេះ` | ` ` | `គឺជា` | `សក្ខីភាព` | `នៃ` | `កិច្ច` | `ខិតខំ` | `ប្រឹងប្រែង` | `របស់` | `ក្រុមការងារ` | `ទាំងមូល` | ` ` | `និង` | `ការ` | `ជឿ` | `ទុកចិត្ត` | `ពីសំណាក់` | `វិនិយោគិន` | `។`
 
 **Key Differences:**
 1.  **Numbers**: `khmernltk` splits `១ ០០០ ០០០` into 5 tokens. `KhmerSegmenter` keeps it as **one**.
 2.  **Acronyms**: `khmernltk` destroys `(ស.ភ.ភ.ព.)` into multiple tokens. `KhmerSegmenter` keeps it as **one**.
-3.  **Dictionary Adherence**: `KhmerSegmenter` strictly adheres to the dictionary. For example, it correctly splits `ភាគហ៊ុន` into `ភាគ` | `ហុ៊ន` if `ភាគហ៊ុន` isn't in the loaded dictionary but the parts are (or vice versa depending on dictionary state). *Note: Benchmarks reflect the current state of `khmer_dictionary_words.txt`. As you add words like `ភាគហ៊ុន`, the segmenter will automatically group them.*
+3.  **Dictionary Adherence**: `KhmerSegmenter` strictly adheres to the dictionary. For example, it correctly splits `ភាគហ៊ុន` into `ភាគ` | `ហ៊ុន` if `ភាគហ៊ុន` isn't in the loaded dictionary but the parts are (or vice versa depending on dictionary state). *Note: Benchmarks reflect the current state of `khmer_dictionary_words.txt`. As you add words like `ភាគហ៊ុន`, the segmenter will automatically group them.*
 
 ### Portability & Universal Compatibility
 Because `KhmerSegmenter` relies on **pure mathematical logic (Viterbi Algorithm)** and simple string matching:
