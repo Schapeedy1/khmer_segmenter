@@ -13,3 +13,24 @@ unknown_words_from_results.txt
 Thumbs.db
 
 experiments/
+
+# Zig Build System
+c_port/.zig-cache
+c_port/zig-cache/
+c_port/zig-out/
+
+# C/C++ Build Artifacts
+*.o
+*.obj
+*.lib
+*.dll
+*.dylib
+*.so
+*.a
+
+# Windows Executables and Debug Symbols
+*.exe
+*.pdb
+*.idb
+*.ilk
+

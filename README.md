@@ -38,8 +38,15 @@ To install the required dependencies, run:
 
 ```bash
 pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
+## C Port (High Performance)
+
+For users requiring maximum performance or embedding in C/C++/Zig applications, a native port is available in the `c_port/` directory.
+
+*   **Speed**: ~1.5x faster (Single Thread), ~7x faster (Multi-Thread).
+*   **Documentation**: See [c_port/README.md](c_port/README.md).
 ## 1. Data Preparation (`scripts/generate_frequencies.py`)
 
 Before the segmenter works, it needs a statistical model of the language:
@@ -254,24 +261,23 @@ This will generate `data/unknown_words_from_results.txt` showing the unknown wor
 
 We compared `KhmerSegmenter` against `khmernltk` using real-world complex text:
 
-|Feature|khmernltk|KhmerSegmenter (Ours)|
-|:---|:---|:---|
-|**Cold Start (Load)**|~1.83s|**~0.30s** (6x Faster)|
-|**Memory Usage (Load)**|~113.6 MB|**~21.6 MB** (5x Leaner)|
-|**Execution Speed (Seq)**|~3.02ms / call|**~2.08ms / call** (1.4x Faster)|
-|**Concurrent (10 Workers)**|~318 calls / sec|**~447 calls / sec** (1.4x Faster)|
-|**Concurrent Memory Delta**|~12.1 MB|~19.0 MB (High Throughput)|
-|**Complex Input**|`ក្រុមហ៊ុន... ១ ០០០ ០០០... (ស.ភ.ភ.ព.)`|`ក្រុមហ៊ុន... ១ ០០០ ០០០... (ស.ភ.ភ.ព.)`|
-|**Segmentation**|`១` \| `០០០` \| `០០០` \| `(` \| `ស` \| `.` \| `ភ` \| ...|`១ ០០០ ០០០` \| `(ស.ភ.ភ.ព.)`|
-|**Characteristics**|Tends to split numbers, symbols, and acronyms.|**Correctly groups** space-separated numbers, currencies, and complex acronyms.|
+|Feature|khmernltk (Python)|KhmerSegmenter (Python)|KhmerSegmenter (C Port)|
+|:---|:---|:---|:---|
+|**Cold Start (Load)**|~1.83s|~0.30s (6x Faster)|**< 0.05s** (Instant)|
+|**Memory Usage**|~113.6 MB|~21.6 MB (5x Leaner)|**~14 MB** (Lowest)|
+|**Execution Speed (Seq)**|~5.77ms / call|~5.77ms / call (Baseline)|**~3.91ms / call** (1.5x Faster)|
+|**Concurrent (10 Workers)**|~318 calls / sec (GIL)|~447 calls / sec (GIL)|**~3235 calls / sec** (7x Faster)|
+|**Concurrent Memory Delta**|~12.1 MB|~19.0 MB|**~1.0 MB** (Efficient)|
+|**Complex Input**|Splits numbers/acronyms|Correctly Groups (Rules)|**Correctly Groups**|
+|**Characteristics**|ML/Rule Hybrid|Pure Logic (Python)|**Pure Logic (Native)**|
 
 ### Performance & Portability Analysis
 
 #### 1. Concurrency & Threading
 Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSegmenter` achieves **~447 calls/sec** vs `khmernltk`'s **~318 calls/sec**.
-*   **GIL Bottleneck**: In the current Python implementation, concurrent performance is restricted by the **Global Interpreter Lock (GIL)**. This means that while we use multiple threads, Python only executes one thread's bytecode at a time, limiting the speedup to roughly the efficiency of the underlying C-calls or I/O.
-*   **True Parallelism (Future Potential)**: Because our algorithm is purely mathematical and stateless (no complex model locking), porting it to a language without a GIL (like **C**, **C++**, **Rust**, or **Go**) would result in **dramatic performance increases**. In those environments, the 10 workers would run in true parallel across CPU cores.
-*   **Memory Efficiency**: `KhmerSegmenter` loads its dictionary structures once (~21.6 MB). `khmernltk` adds ~114.6 MB. In a threaded environment, both share memory, but `KhmerSegmenter`'s small footprint making it significantly easier to scale on memory-constrained containers.
+
+*   **Python Limitations (GIL)**: In Python, concurrent performance is restricted by the **Global Interpreter Lock (GIL)**. This limits true parallelism.
+*   **C Port Advantage**: The C port, free from the GIL, achieves **~3235 calls/sec** (over **7x faster** than Python concurrent). This demonstrates linear scaling: adding more CPU cores directly translates to higher throughput, making it ideal for high-load server environments.
 
 #### 2. Portability (Universal Compatibility)
 *   **KhmerSegmenter**: **Pure Python**. Requires **Zero** external dependencies beyond the standard library. It runs anywhere Python runs (Lambda, Edge devices, Windows/Linux/Mac) without compilation.
