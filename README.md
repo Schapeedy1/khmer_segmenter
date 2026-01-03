@@ -2,6 +2,10 @@
 
 This project implements a probabilistic word segmentation algorithm for the Khmer language. It uses a **Viterbi** approach (finding the shortest path in a graph of possible segments) weighted by word probabilities derived from a text corpus.
 
+
+> [!IMPORTANT]
+> **Disclaimer:** This dictionary is still lacking many curated sources of technical words. If anyone can contribute curated Khmer words with credible sources, the algorithm will improve significantly. We highly appreciate your contributions to improving the data quality!
+
 ## Purpose & Design Philosophy
 
 The primary goal of this project is **dictionary-accurate segmentation**. Unlike modern Machine Learning (ML) models that prioritize predicting conversational "intent" or deep semantic context, `KhmerSegmenter` focuses on strictly aligning text with curated, approved Khmer wording sources.
