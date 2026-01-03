@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import argparse
 from typing import List, Set, Dict, Any
 from collections import Counter, defaultdict
@@ -44,8 +45,13 @@ def is_unknown(word: str, segmenter: KhmerSegmenter, prev_token: str = None, nex
         if is_prev_sep and is_next_sep:
             return False
 
-    # 3. Check if digit
+    # 3. Check if digit (simple)
     if segmenter._is_digit(word):
+        return False
+        
+    # Check if complex number (digits with punctuation like 1.5, 1,000, 1 000)
+    # Allows Arabic and Khmer digits, mixed with . , or whitespace
+    if re.match(r'^[\d\u17E0-\u17E9]+([.,\s]+[\d\u17E0-\u17E9]+)*$', word):
         return False
         
     # 4. Check if separator/punctuation

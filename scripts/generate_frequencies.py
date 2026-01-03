@@ -55,6 +55,7 @@ def process_corpus(corpus_paths, dict_words_path, output_path, limit=None, engin
                 
             with open(corpus_path, "r", encoding="utf-8") as f:
                 for line in f:
+                    pbar.update(1)                     
                     if limit and processed_lines >= limit:
                         break
                     
@@ -86,7 +87,6 @@ def process_corpus(corpus_paths, dict_words_path, output_path, limit=None, engin
                             word_counts[token] += 1
                     
                     processed_lines += 1
-                    pbar.update(1)
             
             if limit and processed_lines >= limit:
                 break

@@ -1,6 +1,7 @@
 import os
 import math
 import json
+import unicodedata
 
 class KhmerSegmenter:
     def __init__(self, dictionary_path, frequency_path="khmer_word_frequencies.json"):
@@ -339,11 +340,15 @@ class KhmerSegmenter:
             if code == 0x17DB:
                 return True
                 
-            # ASCII/General punctuation AND SPACE (' ') AND QUOTES AND SLASH (/)
-            # Also include U+02DD (Double Acute Accent) which looks like a quote
-            # Include $ and % as separators (to split them from numbers)
-            if char in set('!?.,;:"\'()[]{}-/ «»“”˝$%'):
+            # Check for generic Punctuation (P), Symbols (S), and Separators (Z)
+            # This covers:
+            # P: Pc (Connector), Pd (Dash), Ps (Open), Pe (Close), Pi (Initial), Pf (Final), Po (Other)
+            # S: Sm (Math), Sc (Currency), Sk (Modifier), So (Other)
+            # Z: Zs (Space), Zl (Line), Zp (Paragraph)
+            cat = unicodedata.category(char)
+            if cat.startswith('P') or cat.startswith('S') or cat.startswith('Z'):
                 return True
+                
             return False
         except:
             return False
@@ -355,6 +360,12 @@ class KhmerSegmenter:
         n = len(text)
         # Need at least 2 chars: Cluster + .
         if index + 1 >= n:
+            return False
+            
+        # Refine Acronym: Must start with Khmer Consonant or Independent Vowel
+        # Prevents ".." or ". " being detected as acronyms
+        code = ord(text[index])
+        if not (0x1780 <= code <= 0x17B3):
             return False
             
         # Get cluster length
@@ -379,6 +390,11 @@ class KhmerSegmenter:
         
         while i < n:
             # Check for Cluster + Dot
+            
+            # Strict Acronym: Must start with Khmer Consonant/Indep Vowel to continue chain
+            if i < n and not (0x1780 <= ord(text[i]) <= 0x17B3):
+                break
+                
             cluster_len = self._get_khmer_cluster_length(text, i)
             if cluster_len > 0:
                 dot_index = i + cluster_len
@@ -538,8 +554,9 @@ class KhmerSegmenter:
             if self._is_acronym_start(text, i):
                 acr_len = self._get_acronym_length(text, i)
                 next_idx = i + acr_len
-                # Acronyms are valid tokens, low cost
-                step_cost = 1.0
+                # Acronyms are valid tokens but should not override common words + dot.
+                # Use default cost to ensure it's preferred over Unknown+Dot but not CommonWord+Dot
+                step_cost = self.default_cost
                 if dp[i][0] + step_cost < dp[next_idx][0]:
                     dp[next_idx] = (dp[i][0] + step_cost, i)
 
