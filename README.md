@@ -45,7 +45,7 @@ pip install -r requirements.txt
 Before the segmenter works, it needs a statistical model of the language:
 
 1.  **Input Corpora**: The system reads raw Khmer text from files like `data/khmer_wiki_corpus.txt`, `data/khmer_folktales_extracted.txt`, and `data/allwords.txt`.
-2.  **Dictionary Filtering**: It loads `data/khmer_dictionary_words.txt` and filters out single-character words that are not in a predefined "Valid Single Consonant" whitelist (e.g., stopping random letters from being treated as words).
+2.  **Dictionary Filtering**: It loads `data/khmer_dictionary_words.txt` and filters out single-character words that are not true Khmer **Base Characters** (Consonants or Independent Vowels). This prevents signs or fragments from being treated as words.
 3.  **Frequency Generation**:
     *   The `scripts/generate_frequencies.py` script supports two modes:
         *   `--engine khmernltk` (Default): Uses the external library `khmernltk` to create a baseline frequency map from scratch.
@@ -121,7 +121,7 @@ The algorithm iterates through the text, finding the most probabilistic path whe
 
 **6. Unknown Cluster Fallback**:
 *   **Logic**: If no dictionary word matches, it falls back to a structural Khmer cluster.
-*   **Constraint**: Single consonants (e.g., `ក`) incur an **extra penalty** unless they are in a whitelist of valid single words (like `ក៏`, `នៃ`). This encourages merging with neighbors to avoid over-segmentation.
+*   **Constraint**: Single Khmer characters (e.g., `ក`) incur an **extra penalty** unless they are valid **Base Characters** (Consonants `U+1780-U+17A2` or Independent Vowels `U+17A3-U+17B3`). This encourages merging with neighbors to avoid over-segmentation of signs or dependent vowels.
 
 **7. Robust Recovery (Repair Mode)**:
 *   **Problem**: Typos like "orphan" subscripts or vowels at the start of a boundary.
@@ -147,7 +147,56 @@ The raw output is refined using linguistic heuristics:
 **C. Merge Consecutive Unknowns**:
 *   Groups multiple unknown clusters into a single logical "Unknown Block," typically representing a novel proper name or technical term.
 
-## 3. Concrete Examples
+---
+
+## 3. Rule-Based Engine (Post-Processing)
+
+The **Rule-Based Engine** (`khmer_segmenter/rule_engine.py`) is a logic layer that runs after the Viterbi algorithm. It allows you to define deterministic fixes for common errors using a JSON configuration.
+
+### How it Works
+1.  **Iterative Processing**: The engine scans the list of segments produced by Phase 1 & 2.
+2.  **Priority-Based**: Rules in `khmer_segmenter/rules.json` are sorted and applied by priority (highest first).
+3.  **Trigger & Action**: If a segment matches a rule's `trigger`, and satisfies its `checks` (contextual conditions), the specified `action` is performed.
+
+### Rule Schema (`rules.json`)
+| Field | Description |
+| :--- | :--- |
+| **`name`** | Unique identifier for the rule. |
+| **`priority`** | Higher numbers run first. |
+| **`trigger`** | Condition to activate the rule: `exact_match`, `regex`, or `complexity_check`. |
+| **`checks`** | Contextual conditions targeting `prev` or `next` segments. |
+| **`action`** | Operation to perform: `merge_prev`, `merge_next`, or `keep`. |
+
+### Regex Example Rules
+Using `regex` triggers allows targeting broad linguistic patterns:
+
+#### A. Merge Orphaned Signs
+Merges a cluster with a terminal sign (like Robat `៌`) to the previous word if the segmenter accidentally split them.
+```json
+{
+    "name": "Merge Orphaned Signs",
+    "priority": 90,
+    "trigger": { "type": "regex", "value": "^[\\u1780-\\u17A2][\\u17CB\\u17CC\\u17CD\\u17CE\\u17CF]$" },
+    "checks": [{ "target": "prev", "exists": true }],
+    "action": "merge_prev"
+}
+```
+
+#### B. Technical ID Merger
+Keep alphanumeric IDs (like `#ID123`) together by merging them with the following segment.
+```json
+{
+    "name": "Technical ID Merger",
+    "priority": 70,
+    "trigger": { "type": "regex", "value": "^[A-Za-z0-9#@._-]+$" },
+    "checks": [{ "target": "next", "exists": true }],
+    "action": "merge_next"
+}
+```
+
+---
+
+## 4. Concrete Examples
 
 ### Example 1: Known Words
 **Input**: `កងកម្លាំងរក្សាសន្តិសុខ` (Security Forces)
@@ -176,7 +225,7 @@ The raw output is refined using linguistic heuristics:
 *   `ប៉ិ` (Unknown).
 *   **Result**: `តា` | `ប៉ិ` (Correctly keeps known word, flags rest as unknown).
 
-## 4. Comparison with khmernltk
+## 5. Comparison with khmernltk
 
 We compared the performance and output of `KhmerSegmenter` against `khmernltk` using a complex sentence from a folktale.
 
@@ -190,17 +239,17 @@ python scripts/find_unknown_words.py --input segmentation_results.txt
 
 This will generate `data/unknown_words_from_results.txt` showing the unknown words, their frequency, and **context** (2 words before and after) to help you decide if they should be added to the dictionary.
 
-## 4. Benchmark & Performance Comparison
+## 6. Benchmark & Performance Comparison
 
 We compared `KhmerSegmenter` against `khmernltk` using real-world complex text:
 
 |Feature|khmernltk|KhmerSegmenter (Ours)|
 |:---|:---|:---|
-|**Cold Start (Load)**|~1.83s|**~0.22s** (8x Faster)|
-|**Memory Usage (Load)**|~114.6 MB|**~19.1 MB** (6x Leaner)|
-|**Execution Speed (Seq)**|~2.99ms / call|**~2.08ms / call** (1.4x Faster)|
-|**Concurrent (10 Workers)**|~317 calls / sec|**~497 calls / sec** (1.5x Faster)|
-|**Concurrent Memory Delta**|~2.2 MB|~19.7 MB (High Throughput)|
+|**Cold Start (Load)**|~1.83s|**~0.27s** (6x Faster)|
+|**Memory Usage (Load)**|~114.6 MB|**~21.6 MB** (5x Leaner)|
+|**Execution Speed (Seq)**|~2.88ms / call|**~2.17ms / call** (1.3x Faster)|
+|**Concurrent (10 Workers)**|~309 calls / sec|**~467 calls / sec** (1.5x Faster)|
+|**Concurrent Memory Delta**|~10.5 MB|~22.1 MB (High Throughput)|
 |**Complex Input**|`ក្រុមហ៊ុន... ១ ០០០ ០០០... (ស.ភ.ភ.ព.)`|`ក្រុមហ៊ុន... ១ ០០០ ០០០... (ស.ភ.ភ.ព.)`|
 |**Segmentation**|`១` \| `០០០` \| `០០០` \| `(` \| `ស` \| `.` \| `ភ` \| ...|`១ ០០០ ០០០` \| `(ស.ភ.ភ.ព.)`|
 |**Characteristics**|Tends to split numbers, symbols, and acronyms.|**Correctly groups** space-separated numbers, currencies, and complex acronyms.|
@@ -208,10 +257,10 @@ We compared `KhmerSegmenter` against `khmernltk` using real-world complex text:
 ### Performance & Portability Analysis
 
 #### 1. Concurrency & Threading
-Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSegmenter` achieves **~497 calls/sec** vs `khmernltk`'s **~317 calls/sec**.
+Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSegmenter` achieves **~467 calls/sec** vs `khmernltk`'s **~309 calls/sec**.
 *   **GIL Bottleneck**: In the current Python implementation, concurrent performance is restricted by the **Global Interpreter Lock (GIL)**. This means that while we use multiple threads, Python only executes one thread's bytecode at a time, limiting the speedup to roughly the efficiency of the underlying C-calls or I/O.
 *   **True Parallelism (Future Potential)**: Because our algorithm is purely mathematical and stateless (no complex model locking), porting it to a language without a GIL (like **C**, **C++**, **Rust**, or **Go**) would result in **dramatic performance increases**. In those environments, the 10 workers would run in true parallel across CPU cores.
-*   **Memory Efficiency**: `KhmerSegmenter` loads its dictionary structures once (~19.1 MB). `khmernltk` adds ~114.6 MB. In a threaded environment, both share memory, but `KhmerSegmenter`'s small footprint making it significantly easier to scale on memory-constrained containers.
+*   **Memory Efficiency**: `KhmerSegmenter` loads its dictionary structures once (~21.6 MB). `khmernltk` adds ~114.6 MB. In a threaded environment, both share memory, but `KhmerSegmenter`'s small footprint making it significantly easier to scale on memory-constrained containers.
 
 #### 2. Portability (Universal Compatibility)
 *   **KhmerSegmenter**: **Pure Python**. Requires **Zero** external dependencies beyond the standard library. It runs anywhere Python runs (Lambda, Edge devices, Windows/Linux/Mac) without compilation.
@@ -219,7 +268,7 @@ Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSe
 *   **Web & Edge Ready**: Perfect for client-side JavaScript execution (via WASM/Pyodide) or edge computing where low latency and small binary size are crucial.
 
 #### 3. Cold Start
-`KhmerSegmenter` initializes in **~0.22s**, whereas `khmernltk` takes **~1.8s+** to load its model. This makes `KhmerSegmenter` ideal for "Serverless" functions where startup latency is a primary billing and UX concern.
+`KhmerSegmenter` initializes in **~0.27s**, whereas `khmernltk` takes **~1.8s+** to load its model. This makes `KhmerSegmenter` ideal for "Serverless" functions where startup latency is a primary billing and UX concern.
 
 ### Real-World Complex Sentence Example
 
@@ -244,7 +293,7 @@ Because `KhmerSegmenter` relies on **pure mathematical logic (Viterbi Algorithm)
 *   **Zero Dependencies**: Unlike ML-based solutions that require specific runtime environments (e.g. `scikit-learn`, `libpython`), this logic is self-contained and highly embeddable.
 *   **Web & Edge Ready**: Perfect for client-side JavaScript execution (via WASM or direct port) or edge computing where low latency and small binary size are crucial.
 
-## 5. Testing & Verification
+## 7. Testing & Verification
 
 You can verify the segmentation logic using the `scripts/test_viterbi.py` script. This script supports both single-case regression testing and batch processing of a corpus.
 
@@ -260,7 +309,7 @@ python scripts/test_viterbi.py --source data/khmer_folktales_extracted.txt --lim
 ```
 This will generate `segmentation_results.txt`.
 
-## License
+## 8. License
 
 MIT License
 
@@ -288,7 +337,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 You are free to use, modify, and distribute this software, but you **must acknowledge usage** by retaining the copyright notice and license in your copies.
 
-## 6. Acknowledgements
+## 9. Acknowledgements
 
 *   **[khmernltk](https://github.com/VietHoang1512/khmer-nltk)**: Used for initial corpus tokenization and baseline frequency generation.
 *   **[sovichet](https://github.com/sovichet)**: For providing the [Khmer Folktales Corpus](https://github.com/sovichet) and Dictionary resources.
