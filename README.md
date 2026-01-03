@@ -78,7 +78,7 @@ To add or modify words in the dictionary:
 1.  **Edit the Dictionary File**: Open `data/khmer_dictionary_words.txt` and add/edit the words. Ensure there is only one word per line.
 2.  **Regenerate Frequencies**: Run the frequency generation script to update the statistical model. This ensures the segmenter knows about the new word and its usage probability.
     ```bash
-    python scripts/generate_frequencies.py --engine internal --corpus data/khmer_wiki_corpus.txt --dict data/khmer_dictionary_words.txt --output data/khmer_word_frequencies.json
+    python scripts/generate_frequencies.py --engine internal
     ```
 
 ## 2. The Segmentation Algorithm (`khmer_segmenter/viterbi.py`)
