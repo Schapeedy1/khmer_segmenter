@@ -465,9 +465,6 @@ class KhmerSegmenter:
         # 0. Normalize Text
         text = self.normalizer.normalize(text)
         
-        # 1. Strip ZWS
-        text = text.replace('\u200b', '')
-        
         n = len(text)
         if n == 0:
             return []

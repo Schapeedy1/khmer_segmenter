@@ -85,45 +85,56 @@ The core engine is a class `KhmerSegmenter` that uses **Viterbi Algorithm** (Dyn
 ### Step-by-Step Logic
 When `segment(text)` is called:
 
-#### Phase 0: Input Normalization
-Before segmentation begins, the text is passed through a **Normalization Layer** (`khmer_segmenter/normalization.py`). This addresses the common issue where Khmer text looks correct on screen but uses incorrect Unicode ordering (e.g., typing a vowel before a subscript).
+#### Phase 0: Input Normalization (`khmer_segmenter/normalization.py`)
+Before segmentation begins, the text passes through a **Khmer-specific Normalization Layer**. This addresses the "Visual vs. Logical" ordering conflict common in Khmer digital text (e.g., typing a vowel before a subscript or mixing up sign order).
 
-1.  **Canonical Reordering**: Sorts character clusters into the standard Khmer Unicode order:
-    *   Base Consonant
-    *   Subscripts (Non-Ro)
-    *   Subscript Ro (`\u17D2\u179A`) – *Always placed after other subscripts*
-    *   Dependent Vowels
-    *   Signs/Diacritics
-2.  **Composite Fixing**: Merges split vowels (e.g., `E` + `I` -> `OE`) into their single canonical code points.
+1.  **Composite Vowel Merging**: 
+    Automatically merges split vowel components into single canonical Unicode points:
+    *   `E` (`\u17C1`) + `I` (`\u17B8`) $\rightarrow$ **OE** (`\u17BE`)
+    *   `E` (`\u17C1`) + `AA` (`\u17B6`) $\rightarrow$ **AU** (`\u17C4`)
+
+2.  **Cluster-Based Canonical Reordering**:
+    The normalizer parses text into linguistic clusters and strictly enforces the following Unicode order:
+    1.  **Base Char** (Consonant or Independent Vowel)
+    2.  **Subscripts (Non-Ro)** (e.g., `្ក`, `្ខ`)
+    3.  **Subscript Ro** (Coeng Ro `\u17D2\u179A` is *always* moved after other subscripts)
+    4.  **Registers** (Muusikatoan `៉`, Triisap `៊`) — *Crucially moved to precedes vowels to prevent display bugs*
+    5.  **Dependent Vowels** (e.g., `ា`, `ិ`, `ុ`)
+    6.  **Signs/Diacritics** (e.g., `ំ`, `ះ`, `៍`)
+
+3.  **Stability & Error Handling**: 
+    *   **ZWS Cleaning**: Removes Zero Width Spaces (`\u200b`) at the very first step to prevent segmentation interference.
+    *   **Stable Sorting**: If multiple vowels or signs are present, they are sorted by Unicode code point to ensure deterministic output.
+    *   **Orphan Preservation**: Vowels or signs without a base consonant (typos) are preserved rather than deleted, allowing the segmenter to flag them as unknown.
 
 #### Phase 1: Viterbi Forward Pass
-The algorithm iterates through the text, finding the most probabilistic path where **Cost** = $-\log_{10}(Probability)$.
+The algorithm iterates through the text, finding the most probabilistic path where
 
-**1. Input Cleaning**: Removes Zero Width Spaces (`\u200b`) to prevent segmentation interference.
+**Cost** = $-\log_{10}(Probability)$.
 
-**2. Number & Currency Grouping (Highest Priority)**:
+**1. Number & Currency Grouping (Highest Priority)**:
 *   **Logic**: Captures digits (Khmer/Arabic), separators (`,`, `.`), and units (e.g., `1 000 000`, `1,200.50`).
 *   **Currency**: Automatically groups **leading currency symbols** (e.g., `$50.00`) as a single token.
 *   **Cost**: Low penalty to ensure numbers stay together.
 
-**3. Separator Handling**:
+**2. Separator Handling**:
 *   **Logic**: Recognizes punctuation (`។`, `៕`, `៖`, `?`, `/`), symbols (`%`), and whitespace.
 *   **Exception**: Currency symbols are only treated as separators if they *don't* precede a number.
 
-**4. Acronym Detection**:
+**3. Acronym Detection**:
 *   **Logic**: Identifies sequences of (Cluster + `.`) like `ស.ភ.ភ.ព.` or `គ.ម.` as single logical units.
 
-**5. Dictionary Match (Shortest Path)**:
+**4. Dictionary Match (Shortest Path)**:
 *   **Logic**: Matches words from the dictionary, including **automatically generated variants** for:
     *   **Interchangeable Consonants**: `្ + ត` vs `្ + ដ` (Ta/Da).
     - **Subscript Ordering**: Flexible ordering for `Coeng Ro` (e.g., `្រ` vs other subscripts).
 *   **Cost**: Derived from corpus frequency.
 
-**6. Unknown Cluster Fallback**:
+**5. Unknown Cluster Fallback**:
 *   **Logic**: If no dictionary word matches, it falls back to a structural Khmer cluster.
 *   **Constraint**: Single Khmer characters (e.g., `ក`) incur an **extra penalty** unless they are valid **Base Characters** (Consonants `U+1780-U+17A2` or Independent Vowels `U+17A3-U+17B3`). This encourages merging with neighbors to avoid over-segmentation of signs or dependent vowels.
 
-**7. Robust Recovery (Repair Mode)**:
+**6. Robust Recovery (Repair Mode)**:
 *   **Problem**: Typos like "orphan" subscripts or vowels at the start of a boundary.
 *   **Action**: Strictly consumes 1 character with a high penalty to ensure the algorithm never crashes on malformed text.
 

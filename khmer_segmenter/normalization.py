@@ -42,6 +42,9 @@ class KhmerNormalizer:
         if not text:
             return ""
             
+        # Step 0: Strip ZWS
+        text = text.replace('\u200b', '')
+            
         # Step 1: Fix Composites (Simple string replacement loop)
         # We invoke this before cluster processing to ensure units are correct.
         # Check standard splits
