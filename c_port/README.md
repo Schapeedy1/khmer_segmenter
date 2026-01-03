@@ -40,7 +40,7 @@ zig build -Doptimize=ReleaseFast
 The executable supports direct text input, multi-file processing, and benchmarking.
 
 ### Common Flags
-- `--input <path...>`: Path to one or more input files. (Alias: `--file`)
+- `--input <path...>`: Path to one or more input files.
 - `--output <path>`: Path to save result (defaults to `segmentation_results.txt` if `--input` is used).
 - `--threads <N>`: Number of threads for batch processing or benchmark (default: 4).
 - `--limit <N>`: Stop processing after $N$ lines across all input files.
