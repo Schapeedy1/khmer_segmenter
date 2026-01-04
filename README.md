@@ -267,9 +267,9 @@ We compared `KhmerSegmenter` against `khmernltk` using real-world complex text:
 |Feature|khmernltk (Python)|KhmerSegmenter (Python)|KhmerSegmenter (C Port)|
 |:---|:---|:---|:---|
 |**Cold Start (Load)**|~1.83s|~0.30s (6x Faster)|**< 0.05s** (Instant)|
-|**Memory Usage**|~113.6 MB|~21.6 MB (5x Leaner)|**~14 MB** (Lowest)|
-|**Execution Speed (Seq)**|~5.77ms / call|~5.77ms / call (Baseline)|**~3.91ms / call** (1.5x Faster)|
-|**Concurrent (10 Workers)**|~318 calls / sec (GIL)|~447 calls / sec (GIL)|**~3235 calls / sec** (7x Faster)|
+|**Memory Usage**|~113.6 MB|~21.6 MB (5x Leaner)|**~9 MB** (Lowest)|
+|**Execution Speed (Seq)**|~5.77ms / call|~5.77ms / call (Baseline)|**~1.52ms / call** (WSL)|
+|**Concurrent (10 Workers)**|~318 calls / sec (GIL)|~447 calls / sec (GIL)|**~4437 calls / sec** (WSL)|
 |**Concurrent Memory Delta**|~12.1 MB|~19.0 MB|**~1.0 MB** (Efficient)|
 |**Complex Input**|Splits numbers/acronyms|Correctly Groups (Rules)|**Correctly Groups**|
 |**Characteristics**|ML/Rule Hybrid|Pure Logic (Python)|**Pure Logic (Native)**|
@@ -280,7 +280,7 @@ We compared `KhmerSegmenter` against `khmernltk` using real-world complex text:
 Benchmarks run with `10 workers` using a `ThreadPoolExecutor` show that `KhmerSegmenter` achieves **~447 calls/sec** vs `khmernltk`'s **~318 calls/sec**.
 
 *   **Python Limitations (GIL)**: In Python, concurrent performance is restricted by the **Global Interpreter Lock (GIL)**. This limits true parallelism.
-*   **C Port Advantage**: The C port, free from the GIL, achieves **~3235 calls/sec** (over **7x faster** than Python concurrent). This demonstrates linear scaling: adding more CPU cores directly translates to higher throughput, making it ideal for high-load server environments.
+*   **C Port Advantage**: The C port, free from the GIL, achieves **~4437 calls/sec** (over **10x faster** than Python concurrent). This demonstrates linear scaling: adding more CPU cores directly translates to higher throughput, making it ideal for high-load server environments.
 
 #### 2. Portability (Universal Compatibility)
 *   **KhmerSegmenter**: **Pure Python**. Requires **Zero** external dependencies beyond the standard library. It runs anywhere Python runs (Lambda, Edge devices, Windows/Linux/Mac) without compilation.

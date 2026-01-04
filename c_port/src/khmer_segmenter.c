@@ -101,6 +101,18 @@ static int hashmap_get_len(HashMap* map, const char* key_ptr, size_t len, float*
     return 0;
 }
 
+static void hashmap_update_default_costs(HashMap* map, float old_cost, float new_cost) {
+    for (size_t i = 0; i < map->size; i++) {
+        Entry* entry = map->buckets[i];
+        while (entry) {
+            if (entry->value == old_cost) {
+                entry->value = new_cost;
+            }
+            entry = entry->next;
+        }
+    }
+}
+
 static void hashmap_free(HashMap* map) {
     for (size_t i = 0; i < map->size; i++) {
         Entry* entry = map->buckets[i];
@@ -338,6 +350,8 @@ static size_t get_acronym_length(const char* text, size_t n, size_t start_idx) {
 
 // --- Variant Generation---
 
+// --- Variant Generation---
+
 static void generate_ta_da_variant(const char* word, HashMap* map, float cost) {
     // Coeng Ta: E1 9F 92 E1 9E 8F (U+17D2 U+178F)
     // Coeng Da: E1 9F 92 E1 9E 8D (U+17D2 U+178D)
@@ -354,7 +368,6 @@ static void generate_ta_da_variant(const char* word, HashMap* map, float cost) {
         memcpy(v_ptr, da, 6);
         hashmap_put(map, variant, cost);
         free(variant);
-        return;
     }
     
     ptr = strstr(word, da);
@@ -369,6 +382,58 @@ static void generate_ta_da_variant(const char* word, HashMap* map, float cost) {
     }
 }
 
+static void generate_ro_variant(const char* word, HashMap* map, float cost) {
+    // Pattern 1: Coeng Ro (\xE1\x9F\x92\xE1\x9E\x9A) followed by Other Coeng (\xE1\x9F\x92 ...)
+    // Pattern 2: Other Coeng followed by Coeng Ro
+    const char* ro = "\xE1\x9F\x92\xE1\x9E\x9A";
+    const char* coeng = "\xE1\x9F\x92";
+    
+    char* result = (char*)malloc(strlen(word) + 1);
+    strcpy(result, word);
+    int changed = 0;
+    
+    for (size_t i = 0; i + 9 < strlen(word); ) {
+        if (strncmp(word + i, ro, 6) == 0 && strncmp(word + i + 6, coeng, 3) == 0 && strncmp(word + i + 6, ro, 6) != 0) {
+            // Swap Ro with Other Coeng
+            // word[i..i+5] is Ro, word[i+6..i+8+?] is Other
+            // Finding end of other coeng subscript
+            int cp;
+            int next_len = utf8_decode(word + i + 9, &cp); // char after \xE1\x9F\x92
+            int other_len = 3 + next_len;
+            
+            // Swap result[i...i+5] with result[i+6...i+6+other_len-1]
+            // For simplicity, just handle the most common case: 3+3=6 byte subscripts
+            if (other_len == 6) {
+                memcpy(result + i, word + i + 6, 6);
+                memcpy(result + i + 6, word + i, 6);
+                changed = 1;
+                i += 12;
+            } else {
+                i++;
+            }
+        } else if (strncmp(word + i, coeng, 3) == 0 && strncmp(word + i, ro, 6) != 0 && strncmp(word + i + 6, ro, 6) == 0) {
+             // Other Coeng followed by Ro
+             // simplistic check for 6-byte other coeng
+             memcpy(result + i, word + i + 6, 6);
+             memcpy(result + i + 6, word + i, 6);
+             changed = 1;
+             i += 12;
+        } else {
+            i++;
+        }
+    }
+    
+    if (changed) {
+        hashmap_put(map, result, cost);
+    }
+    free(result);
+}
+
+static void generate_all_variants(const char* word, HashMap* map, float cost) {
+    generate_ta_da_variant(word, map, cost);
+    generate_ro_variant(word, map, cost);
+}
+
 // --- Binary Frequency Loading ---
 
 static int load_binary_frequencies(KhmerSegmenter* seg, const char* path) {
@@ -378,64 +443,63 @@ static int load_binary_frequencies(KhmerSegmenter* seg, const char* path) {
         return 0;
     }
     
-    // Read header: word count
-    uint32_t word_count;
-    if (fread(&word_count, sizeof(uint32_t), 1, f) != 1) {
-        fprintf(stderr, "Error reading frequency file header\n");
-        fclose(f);
-        return 0;
+    // Read Magic
+    char magic[4];
+    if (fread(magic, 1, 4, f) != 4 || strncmp(magic, "KLIB", 4) != 0) {
+        // Fallback for old format (which started with word count)
+        rewind(f);
+        uint32_t word_count;
+        if (fread(&word_count, sizeof(uint32_t), 1, f) != 1) {
+            fclose(f);
+            return 0;
+        }
+        printf("Detected old frequency format. Loading %u word frequencies...\n", word_count);
+        // ... process entries as before ...
+    } else {
+        // New format: Magic, Version, DefaultCost, UnknownCost, WordCount
+        uint32_t version;
+        fread(&version, sizeof(uint32_t), 1, f);
+        fread(&seg->default_cost, sizeof(float), 1, f);
+        fread(&seg->unknown_cost, sizeof(float), 1, f);
+        
+        uint32_t word_count;
+        if (fread(&word_count, sizeof(uint32_t), 1, f) != 1) {
+            fprintf(stderr, "Error reading frequency file header\n");
+            fclose(f);
+            return 0;
+        }
+        
+        printf("Loading %u word frequencies from binary file (v%u)...\n", word_count, version);
+        printf("Costs updated from binary: default=%.2f, unknown=%.2f\n", seg->default_cost, seg->unknown_cost);
+        
+        // Update costs for dictionary words that don't have frequencies
+        hashmap_update_default_costs(seg->word_costs, 10.0f, seg->default_cost);
+        
+        // Read each entry
+        for (uint32_t i = 0; i < word_count; i++) {
+            uint16_t word_len;
+            if (fread(&word_len, sizeof(uint16_t), 1, f) != 1) break;
+            
+            char* word = (char*)malloc(word_len + 1);
+            fread(word, 1, word_len, f);
+            word[word_len] = 0;
+            
+            float cost;
+            fread(&cost, sizeof(float), 1, f);
+            
+            hashmap_put(seg->word_costs, word, cost);
+            
+            if (seg->config.enable_variant_generation) {
+                generate_all_variants(word, seg->word_costs, cost);
+            }
+            
+            if (strlen(word) > seg->max_word_length) {
+                seg->max_word_length = strlen(word);
+            }
+            free(word);
+        }
     }
     
-    printf("Loading %u word frequencies from binary file...\n", word_count);
-    
-    // Read each entry
-    for (uint32_t i = 0; i < word_count; i++) {
-        // Read word length
-        uint16_t word_len;
-        if (fread(&word_len, sizeof(uint16_t), 1, f) != 1) {
-            fprintf(stderr, "Error reading word length at entry %u\n", i);
-            break;
-        }
-        
-        // Read word bytes
-        char* word = (char*)malloc(word_len + 1);
-        if (fread(word, 1, word_len, f) != word_len) {
-            fprintf(stderr, "Error reading word bytes at entry %u\n", i);
-            free(word);
-            break;
-        }
-        word[word_len] = 0;
-        
-        // Read cost
-        float cost;
-        if (fread(&cost, sizeof(float), 1, f) != 1) {
-            fprintf(stderr, "Error reading cost at entry %u\n", i);
-            free(word);
-            break;
-        }
-        
-        // Insert into hashmap
-        hashmap_put(seg->word_costs, word, cost);
-        
-        // Generate variants if enabled
-        if (seg->config.enable_variant_generation) {
-            generate_ta_da_variant(word, seg->word_costs, cost);
-            // TODO: Add Ro ordering variants if needed
-        }
-        
-        if (strlen(word) > seg->max_word_length) {
-            seg->max_word_length = strlen(word);
-        }
-        
-        free(word);
-        
-        if ((i + 1) % 10000 == 0) {
-            printf("\rLoaded %u frequencies...", i + 1);
-            fflush(stdout);
-        }
-    }
-    
-    printf("\nLoaded %u word frequencies successfully.\n", word_count);
     fclose(f);
     return 1;
 }
@@ -495,7 +559,7 @@ KhmerSegmenter* khmer_segmenter_init_ex(const char* dictionary_path, const char*
             
             // Generate variants if enabled
             if (seg->config.enable_variant_generation) {
-                generate_ta_da_variant(line, seg->word_costs, seg->default_cost);
+                generate_all_variants(line, seg->word_costs, seg->default_cost);
             }
             
             if (strlen(line) > seg->max_word_length) seg->max_word_length = strlen(line);

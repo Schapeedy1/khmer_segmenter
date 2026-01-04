@@ -55,7 +55,10 @@ def generate_binary_frequencies(json_path, output_path):
     # Write binary file
     print(f"Writing binary file to {output_path}...")
     with open(output_path, 'wb') as f:
-        # Write header: word count
+        # Header: MAGIC 'KLIB', version 1, default_cost, unknown_cost, word_count
+        f.write(b'KLIB')
+        f.write(struct.pack('<I', 1)) # Version 1
+        f.write(struct.pack('<ff', default_cost, unknown_cost))
         f.write(struct.pack('<I', len(word_costs)))
         
         # Write each word entry

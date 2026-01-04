@@ -1,6 +1,18 @@
 # Khmer Segmenter (C Port)
 
-A high-performance C port of the Khmer Segmenter, capable of segmenting Dictionary-based and Rule-based Khmer text. This port is built using the properties of the [Zig Build System](https://ziglang.org/) for easy cross-compilation and dependency management.
+A high-performance, cross-platform C port of the Khmer Segmenter, capable of segmenting Dictionary-based and Rule-based Khmer text. This port is built using the [Zig Build System](https://ziglang.org/) for easy cross-compilation and dependency management.
+
+## Platform Support
+
+✅ **Windows** (x86_64, ARM64)  
+✅ **Linux** (x86_64, ARM64)  
+✅ **macOS** (x86_64, Apple Silicon)  
+✅ **BSD** (FreeBSD, OpenBSD, NetBSD)
+
+The codebase automatically adapts to the target platform, using platform-specific APIs for:
+- **Threading**: Windows threads vs pthreads
+- **High-precision timing**: QueryPerformanceCounter vs gettimeofday
+- **Memory measurement**: Windows PSAPI, macOS Mach, Linux /proc
 
 ## Prerequisites
 
@@ -21,58 +33,99 @@ Navigate to the `c_port` directory:
 cd c_port
 ```
 
-### 1. Debug Build (Default)
-Fast compilation, includes debug symbols and runtime safety checks. Slower execution speed.
-```bash
-zig build
-```
-*Output*: `zig-out/bin/khmer_segmenter.exe`
+### Build Commands
 
-### 2. Release Build (Optimized)
-Fully optimized for speed. **Recommended for production or benchmarking.**
 ```bash
-zig build -Doptimize=ReleaseFast
+# Build both debug and release for current platform
+zig build
+
+# Build debug version only
+zig build debug
+
+# Build release version only  
+zig build release
+
+# Cross-compile for Linux from Windows
+zig build -Dtarget=x86_64-linux
+
+# Cross-compile for macOS from Windows
+zig build -Dtarget=aarch64-macos
 ```
-*Output*: `zig-out/bin/khmer_segmenter.exe`
+
+### Output Structure
+
+Binaries are organized by platform and build type:
+
+```
+zig-out/
+├── win/bin/              # Windows builds
+│   ├── khmer_segmenter.exe        (release)
+│   └── khmer_segmenter_debug.exe  (debug)
+├── linux/bin/            # Linux builds
+│   ├── khmer_segmenter
+│   └── khmer_segmenter_debug
+└── macos/bin/            # macOS builds
+    ├── khmer_segmenter
+    └── khmer_segmenter_debug
+```
+
+**Size comparison:**
+- Release build: ~200 KB (optimized)
+- Debug build: ~765 KB (with symbols)
 
 ## Usage
 
-The executable supports direct text input, multi-file processing, and benchmarking.
+The executable supports direct text input, multi-file processing, and benchmarking. **All segmentation results are automatically saved to files.**
 
 ### Common Flags
 - `--input <path...>`: Path to one or more input files.
-- `--output <path>`: Path to save result (defaults to `segmentation_results.txt` if `--input` is used).
+- `--output <path>`: Path to save result (defaults vary by mode).
 - `--threads <N>`: Number of threads for batch processing or benchmark (default: 4).
-- `--limit <N>`: Stop processing after $N$ lines across all input files.
+- `--limit <N>`: Stop processing after N lines across all input files.
 - `--benchmark`: Run performance suite. Can be combined with `--input`.
 
 ### Segment Raw Text
 ```bash
 # Direct text input via CLI
-.\zig-out\bin\khmer_segmenter.exe "ខ្ញុំស្រឡាញ់ប្រទេសកម្ពុជា"
+./zig-out/win/bin/khmer_segmenter.exe "ខ្ញុំស្រឡាញ់ប្រទេសកម្ពុជា"
 
-# Output: ខ្ញុំ | ស្រឡាញ់ | ប្រទេស | កម្ពុជា
+# Console output: ខ្ញុំ | ស្រឡាញ់ | ប្រទេស | កម្ពុជា
+# File output: segmentation_results.txt (contains original + segmented)
 ```
 
+> [!NOTE]
+> Results are saved to `segmentation_results.txt` by default, or specify `--output` to customize.
+
 ### Batch File Processing
-Process one or more files and save to a single output file.
+Process one or more files and save to a single output file. The output includes both original and segmented text for each line.
+
 ```bash
 # Process multiple files with 8 threads and a limit of 1000 lines
-.\zig-out\bin\khmer_segmenter.exe --input file1.txt file2.txt --output results.txt --threads 8 --limit 1000
+./zig-out/linux/bin/khmer_segmenter --input file1.txt file2.txt --output results.txt --threads 8 --limit 1000
+```
+
+**Output format** (`results.txt`):
+```
+Original:  ខ្ញុំស្រឡាញ់ប្រទេសកម្ពុជា
+Segmented: ខ្ញុំ | ស្រឡាញ់ | ប្រទេស | កម្ពុជា
+----------------------------------------
+Original:  ...
+Segmented: ...
 ```
 
 ### Benchmarking
-Run performance tests using the built-in sample or your own data.
+Run performance tests using the built-in sample or your own data. Results are always saved to file.
+
 ```bash
-# Use built-in sample text
-.\zig-out\bin\khmer_segmenter.exe --benchmark --threads 10
+# Use built-in sample text (saves to benchmark_results.txt)
+./zig-out/macos/bin/khmer_segmenter --benchmark --threads 10
 
 # Benchmark using your actual data
-.\zig-out\bin\khmer_segmenter.exe --input corpus.txt --benchmark --threads 12 --limit 5000 --output segmented_benchmark.txt
+./zig-out/win/bin/khmer_segmenter.exe --input corpus.txt --benchmark --threads 12 --limit 5000 --output segmented_benchmark.txt
 ```
+
 > [!NOTE]
 > When `--benchmark` is used with `--input`, it runs both Sequential (1-thread) and Concurrent (N-threads) benchmarks on the provided text and saves the segmented results to the `--output` path.
-
 
 ## Performance Comparison
 
@@ -82,8 +135,47 @@ Comparing segmentation speed on a long text paragraph (~935 characters) running 
 | :--- | :--- | :--- | :--- | :--- |
 | **Python** | N/A | ~5.77 ms | ~173 calls/s | Baseline logic |
 | **C Port** | Debug | ~8.56 ms | ~116 calls/s | Includes safety checks & unoptimized code |
-| **C Port** | Release (Seq) | ~3.91 ms | ~255 calls/s | Single Thread (~1.5x Faster than Python) |
-| **C Port** | **Release (10 Threads)** | **~0.31 ms*** | **~3235 calls/s** | **Massive Throughput scaling** |
+| **C Port** | Release (Seq) | ~1.52 ms | ~656 calls/s | Single Thread (WSL Results) |
+| **C Port** | **Release (10 Threads)** | **~0.23 ms*** | **~4437 calls/s** | **Massive Throughput scaling** |
 
-*> * Effective time per call under load (1/Throughput).*
+*> * Effective time per call under load (1/Throughput).*  
 *> Note: Benchmarks run on standard consumer hardware. Multi-threaded throughput scales linearly with core count.*
+
+## Platform-Specific Notes
+
+### Windows
+- UTF-8 console support is automatically enabled for proper Khmer text display
+- Requires no additional setup
+
+### Linux/Unix
+- POSIX threads (pthread) library is automatically linked
+- Tested on Ubuntu, Debian, and Arch Linux
+
+### macOS  
+- Supports both Intel and Apple Silicon
+- Uses native Mach APIs for memory measurement
+
+### WSL (Windows Subsystem for Linux)
+For best performance and to avoid permission issues with Zig cache:
+```bash
+# Option 1: Work in WSL native filesystem
+cp -r /mnt/c/path/to/project ~/project
+cd ~/project/c_port
+zig build
+
+# Option 2: Clear cache in Windows directories
+rm -rf .zig-cache zig-out
+zig build
+```
+
+## File Output
+
+All operations automatically save results to files with both original and segmented text:
+
+| Operation | Default Output File | Override with |
+|-----------|-------------------|---------------|
+| Direct text input | `segmentation_results.txt` | `--output` |
+| File processing | `segmentation_results.txt` | `--output` |
+| Benchmark (internal) | `benchmark_results.txt` | `--output` |
+| Benchmark (with input) | Specified by `--output` | Required |
+
