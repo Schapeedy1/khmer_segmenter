@@ -129,7 +129,6 @@ We provide two benchmarks: one for **Real-Time Latency** (single sentence, micro
 |**Execution Speed (Seq)**|~5.77ms / call|~5.77ms / call (Baseline)|**~0.59ms / call** (WSL)|
 |**Concurrent (10 Workers)**|~318 calls / sec (GIL)|~447 calls / sec (GIL)|**~9240 calls / sec** (WSL)|
 |**Concurrent Memory Delta**|~12.1 MB|~19.0 MB|**~0.17 MB** (Efficient)|
-|**Concurrent Speedup**|0.9x (GIL)|~1.4x (GIL overhead)|**~15x** (Linear)|
 |**Characteristics**|ML/Rule Hybrid|Pure Logic (Python)|**Pure Logic (Native)**|
 
 ### Scenario B: Batch Processing / Throughput (Macro-benchmark)
