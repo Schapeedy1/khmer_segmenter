@@ -19,7 +19,7 @@ In the current NLP landscape (2026), there is a significant trade-off between **
 | **Logic** | "Search": Find the mathematically best path through a curated dictionary. | "Patterns": Infer boundaries based on patterns seen in millions of articles. |
 | **Transparency** | **White Box**: If a word splits incorrectly, you simply update the dictionary or frequency table. | **Black Box**: Errors require retraining with thousands of examples; shifts are often opaque. |
 | **Hardware** | **Ultra-Light**: Runs on anything (Drones, Mobile, Arduinos, Low-power CPUs). | **Heavy**: Usually requires GPUs or high-end CPUs and massive RAM. |
-| **Size** | **Tiny**: ~3 MB (Dictionary size) + <100KB of logic. | **Massive**: 500 MB to 10 GB+ of model weights. |
+| **Size** | **Tiny**: ~3 MB (Dictionary size) + < 100KB of logic. | **Massive**: 500 MB to 10 GB+ of model weights. |
 | **Determinism** | **100% Consistent**: Same input + Same dict always equals Same output. | **Stochastic**: Can "hallucinate" or vary results based on subtle context shifts. |
 
 ### The "Context" Argument
@@ -64,7 +64,7 @@ print(result)
 
 For users requiring maximum performance or embedding in C/C++/Zig applications, a native port is available in the [port/c/](port/c/) directory. All ports share common linguistic data found in [port/common/](port/common/).
 
-*   **Speed**: ~10x faster (Single Thread), more than 20x faster (Multi-Thread) running in WSL.
+*   **Speed**: ~16x faster (Single Thread), more than 30x faster (Multi-Thread) running in WSL.
 *   **Architecture**: Zero-dependency, **Regex-Free** Rule Engine (Hardcoded logic) for consistent O(n) performance.
 *   **Documentation**: See [port/c/README.md](port/c/README.md).
 ## 1. Data Preparation (`scripts/prepare_data.py`)
@@ -126,10 +126,10 @@ We provide two benchmarks: one for **Real-Time Latency** (single sentence, micro
 |:---|:---|:---|:---|
 |**Cold Start (Load)**|~1.83s|~0.30s (6x Faster)|**< 0.05s** (Instant)|
 |**Memory Usage**|~113.6 MB|~21.6 MB (5x Leaner)|**~4.8 MB** (Lowest)|
-|**Execution Speed (Seq)**|~5.77ms / call|~5.77ms / call (Baseline)|**~0.59ms / call** (WSL)|
-|**Concurrent (10 Workers)**|~318 calls / sec (GIL)|~447 calls / sec (GIL)|**~9240 calls / sec** (WSL)|
+|**Execution Speed (Seq)**|~5.77ms / call|~5.77ms / call (Baseline)|**~0.34ms / call** (WSL)|
+|**Concurrent (10 Workers)**|~318 calls / sec (GIL)|~447 calls / sec (GIL)|**~13,600 calls / sec** (WSL)|
 |**Concurrent Memory Delta**|~12.1 MB|~19.0 MB|**~0.17 MB** (Efficient)|
-|**Characteristics**|ML/Rule Hybrid|Pure Logic (Python)|**Pure Logic (Native)**|
+|**Characteristics**|ML/Rule Hybrid|Pure Logic (Python)|**Pure Logic (SIMD Optimized)**|
 
 ### Scenario B: Batch Processing / Throughput (Macro-benchmark)
 *Context: Processing large datasets (Khmer Wiki Corpus, 50,000 lines).*
@@ -139,13 +139,13 @@ We provide two benchmarks: one for **Real-Time Latency** (single sentence, micro
 |**Load Time**|~1.84s|~0.28s (6x Faster)|**< 0.05s** (Instant)|
 |**Memory Overhead**|~53.7 MB|~27.8 MB|**~23 MB**|
 |**Throughput (Seq)**|~429 lines / sec|~585 lines / sec|**~5,310 lines / sec** (12x)|
-|**Throughput (10 Threads)**|~391 lines / sec (GIL)|~553 lines / sec (GIL)|**~32,571 lines / sec** (83x)|
+|**Throughput (10 Threads)**|~391 lines / sec (GIL)|~553 lines / sec (GIL)|**~45,173 lines / sec** (115x)|
 |**Complex Input**|Splits numbers/acronyms|Correctly Groups (Rules)|**Correctly Groups**|
 
 ### Performance Analysis
 
 #### 1. Massive Throughput (C Port)
-With file-based benchmarking on WSL, the C port processes **32,571 lines per second** using 10 threads, compared to ~553 lines/sec in Python. This **~60x - 80x speedup** validates the linear scaling of the C implementation on multi-core systems, making it suitable for high-volume ETL pipelines.
+With file-based benchmarking on WSL, the C port processes **45,173 lines per second** using 10 threads, compared to ~553 lines/sec in Python. This **~115x speedup** validates the linear scaling and SIMD optimizations of the C implementation on multi-core systems, making it suitable for high-volume ETL pipelines.
 
 #### 2. Concurrency & The GIL
 Python-based segmenters (both ours and `khmernltk`) see **negative scaling** (0.9x speedup) when adding threads due to the **Global Interpreter Lock (GIL)** and overhead. Python is strictly limited to single-core CPU speeds for this workload.

@@ -150,12 +150,12 @@ Comparing segmentation speed on various workloads:
 | Scenario | Version | Threads | Throughput | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | **Micro-Benchmark** (Latency) | **Python** | 1 | ~173 calls/s | Baseline logic |
-| **Micro-Benchmark** (Latency) | **C Port** | 1 | ~1,709 calls/s | Single Thread (WSL) |
-| **Micro-Benchmark** (Latency) | **C Port** | 10 | **~9,240 calls/s** | Repeated single paragraph |
+| **Micro-Benchmark** (Latency) | **C Port** | 1 | ~2,950 calls/s | Single Thread (Seq) |
+| **Micro-Benchmark** (Latency) | **C Port** | 10 | **~13,600 calls/s** | Concurrent (10 Threads) |
 | **Macro-Benchmark** (Throughput) | **Python** | 10 | ~553 lines/s | File I/O + GIL bottleneck |
-| **Macro-Benchmark** (Throughput) | **C Port** | 10 | **~32,571 lines/s** | **Massive Scaling on Real Corpus** |
+| **Macro-Benchmark** (Throughput) | **C Port** | 10 | **~45,173 lines/s** | **SIMD Optimized (AVX2)** |
 
-*> Note: Benchmarks run on standard consumer hardware. Multi-threaded throughput scales linearly with core count.*
+*> Note: Benchmarks run on standard consumer hardware (WSL). Multi-threaded throughput scales linearly with core count.*
 
 ## Platform-Specific Notes
 

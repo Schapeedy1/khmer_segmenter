@@ -55,30 +55,97 @@ static uint32_t djb2_hash_len(const char* str, size_t len) {
     return hash;
 }
 
+#if defined(_MSC_VER)
+    /* Microsoft C/C++-compatible compiler */
+    #include <intrin.h>
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+    /* GCC-compatible compiler, targeting x86/x86-64 */
+    #include <x86intrin.h>
+#elif defined(__GNUC__) && defined(__ARM_NEON)
+    /* GCC-compatible compiler, targeting ARM with NEON */
+    #include <arm_neon.h>
+#endif
+
 // ============================================================================
-// UTF-8 Helper Utils
+// UTF-8 Helper Utils (Branchless & Optimized)
 // ============================================================================
+
+// Table for fast UTF-8 length lookup (0 = invalid/cont)
+static const uint8_t utf8_len_table[256] = {
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // 00-1F
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // 20-3F
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // 40-5F
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // 60-7F
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 80-9F (Continuation)
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // A0-BF (Continuation)
+    2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, // C0-DF (2 bytes)
+    3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, // E0-EF (3 bytes)
+    4,4,4,4,4,4,4,4, // F0-F7 (4 bytes)
+    0,0,0,0,0,0,0,0  // F8-FF (Invalid)
+};
+
+static inline int utf8_len(unsigned char c) {
+    return utf8_len_table[c];
+}
 
 static int utf8_decode(const char* str, int* out_codepoint) {
     unsigned char c = (unsigned char)str[0];
     if (c < 0x80) {
         *out_codepoint = c;
         return 1;
-    } else if ((c & 0xE0) == 0xC0) {
-        if (!str[1]) { *out_codepoint = 0; return 1; }
+    }
+    
+    // Fast path for length lookup
+    int len = utf8_len_table[c];
+    if (len == 0) { *out_codepoint = 0; return 1; } // Invalid
+    
+    if (len == 2) {
         *out_codepoint = ((c & 0x1F) << 6) | (str[1] & 0x3F);
         return 2;
-    } else if ((c & 0xF0) == 0xE0) {
-        if (!str[1] || !str[2]) { *out_codepoint = 0; return 1; }
+    } else if (len == 3) {
         *out_codepoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
         return 3;
-    } else if ((c & 0xF8) == 0xF0) {
-        if (!str[1] || !str[2] || !str[3]) { *out_codepoint = 0; return 1; }
+    } else if (len == 4) {
         *out_codepoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
         return 4;
     }
+    
     *out_codepoint = 0;
     return 1; 
+}
+
+// SIMD-optimized string equality check
+static inline int fast_str_eq(const char* a, const char* b, size_t len) {
+#if defined(__AVX2__)
+    // AVX2 implementation (32 bytes at a time)
+    size_t i = 0;
+    while (i + 32 <= len) {
+        __m256i va = _mm256_loadu_si256((const __m256i*)(a + i));
+        __m256i vb = _mm256_loadu_si256((const __m256i*)(b + i));
+        __m256i cmp = _mm256_cmpeq_epi8(va, vb);
+        unsigned int mask = _mm256_movemask_epi8(cmp);
+        if (mask != 0xFFFFFFFF) return 0; // Mismatch found
+        i += 32;
+    }
+    // Fallback for remaining bytes
+    return memcmp(a + i, b + i, len - i) == 0;
+    
+#elif defined(__SSE2__) || defined(_M_X64) || defined(_M_IX86)
+    // SSE2 implementation (16 bytes at a time)
+    size_t i = 0;
+    while (i + 16 <= len) {
+        __m128i va = _mm_loadu_si128((const __m128i*)(a + i));
+        __m128i vb = _mm_loadu_si128((const __m128i*)(b + i));
+        __m128i cmp = _mm_cmpeq_epi8(va, vb);
+        int mask = _mm_movemask_epi8(cmp);
+        if (mask != 0xFFFF) return 0;
+        i += 16;
+    }
+    return memcmp(a + i, b + i, len - i) == 0;
+#else
+    // Generic fallback
+    return memcmp(a, b, len) == 0;
+#endif
 }
 
 // ============================================================================
@@ -535,8 +602,8 @@ char* khmer_segmenter_segment(KhmerSegmenter* seg, const char* raw_text, const c
             uint32_t idx = khash & seg->table_mask;
             while (seg->table[idx].name_offset != 0) {
                  const char* stored_word = seg->string_pool + seg->table[idx].name_offset;
-                 // Optimized string comparison
-                 if (stored_word[0] == text[i] && strncmp(stored_word, text + i, len) == 0 && stored_word[len] == 0) {
+                 // Optimized string comparison with SIMD
+                 if (stored_word[0] == text[i] && fast_str_eq(stored_word, text + i, len) && stored_word[len] == 0) {
                      float new_cost = dp[i].cost + seg->table[idx].cost;
                      if (new_cost < dp[j].cost) {
                          dp[j].cost = new_cost;

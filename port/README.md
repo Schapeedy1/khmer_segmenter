@@ -127,6 +127,31 @@ Evaluate all possible segments starting at `i` and update `dp[i + length]`:
 - For **Priority 4 (Dictionary)**, limit the loop to `min(n, i + MAX_WORD_LENGTH)`.
 - **Unknown Penalty**: If an unknown cluster is a *single valid consonant* (e.g., `ក`), add `+10` cost to discourage splitting words into letters.
 
+### 3.3 Performance Optimizations (Advanced)
+
+For high-performance ports (C/C++, Rust, Zig), implementing these optimizations can yield significant speedups (e.g., 20-50%):
+
+**A. Branchless UTF-8 Decoding**
+Instead of using `if/else` checks for every byte to determine character length, use a lookup table. This avoids CPU branch mispredictions.
+
+```c
+// Table for fast UTF-8 length lookup (0 = invalid/cont)
+static const uint8_t utf8_len_table[256] = {
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // 00-1F
+    // ... (Fill 0x20-0x7F with 1) ...
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 0x80-0xBF (Continuation = 0)
+    2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, // 0xC0-0xDF (2 bytes)
+    3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, // 0xE0-0xEF (3 bytes)
+    4,4,4,4,4,4,4,4, // 0xF0-0xF7 (4 bytes)
+    0,0,0,0,0,0,0,0  // 0xF8-0xFF (Invalid)
+};
+
+static inline int utf8_len(unsigned char c) { return utf8_len_table[c]; }
+```
+
+**B. SIMD String Comparison**
+The Viterbi inner loop performs thousands of dictionary lookups. Use SIMD (AVX2/SSE) to compare 16 or 32 bytes at a time instead of `memcmp` or `strcmp`.
+
 ---
 
 ## 4. Backtracking
