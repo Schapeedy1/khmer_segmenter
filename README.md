@@ -1,40 +1,34 @@
 # Khmer Word Segmentation Algorithm
 
-This project implements a probabilistic word segmentation algorithm for the Khmer language. It uses a **Viterbi** approach (finding the shortest path in a graph of possible segments) weighted by word probabilities derived from a text corpus.
+I've implemented a probabilistic word segmentation algorithm for the Khmer language using a **Viterbi** approach (finding the shortest path in a graph of possible segments) weighted by word probabilities derived from a text corpus.
 
 
 > [!IMPORTANT]
-> **Disclaimer:** This dictionary is still lacking many curated sources of technical words. If anyone can contribute curated Khmer words with credible sources, the algorithm will improve significantly. We highly appreciate your contributions to improving the data quality!
+> **Disclaimer:** My dictionary is still lacking many curated sources of technical words. If anyone can contribute curated Khmer words with credible sources, the algorithm will improve significantly. I highly appreciate your contributions to improving the data quality!
 
-## Purpose & Design Philosophy
 
-The primary goal of this project is **dictionary-accurate segmentation**. Unlike modern Machine Learning (ML) models that prioritize predicting conversational "intent" or deep semantic context, `KhmerSegmenter` focuses on strictly aligning text with curated, approved Khmer wording sources.
 
-### Why Viterbi over Deep Learning?
+## Why Dictionary-First?
 
-In the current NLP landscape (2026), there is a significant trade-off between **Contextual Awareness** (Deep Learning) and **Deterministic Efficiency** (Algorithmic).
+**TL;DR:** Most ML-based Khmer segmentation relies on inconsistent Zero-Width Space (ZWS) annotations in training data. Since 100 people annotate ZWS differently, models learn "average human inconsistency" rather than linguistic correctness. I ignore ZWS entirely, using curated dictionaries and frequency-based Viterbi search for **deterministic, dictionary-accurate segmentation**.
 
-| Feature | KhmerSegmenter (Viterbi) | ML-Based (Transformers/BERT) |
-| :--- | :--- | :--- |
-| **Logic** | "Search": Find the mathematically best path through a curated dictionary. | "Patterns": Infer boundaries based on patterns seen in millions of articles. |
-| **Transparency** | **White Box**: If a word splits incorrectly, you simply update the dictionary or frequency table. | **Black Box**: Errors require retraining with thousands of examples; shifts are often opaque. |
-| **Hardware** | **Ultra-Light**: Runs on anything (Drones, Mobile, Arduinos, Low-power CPUs). | **Heavy**: Usually requires GPUs or high-end CPUs and massive RAM. |
-| **Size** | **Tiny**: ~3 MB (Dictionary size) + < 100KB of logic. | **Massive**: 500 MB to 10 GB+ of model weights. |
-| **Determinism** | **100% Consistent**: Same input + Same dict always equals Same output. | **Stochastic**: Can "hallucinate" or vary results based on subtle context shifts. |
+### Key Advantages
 
-### The "Context" Argument
-Critics of Viterbi often point out its "Blindness" to semantic context (long-range dependencies). However, for technical documentation, standard literature, and dictionary-driven applications, this "blindness" is a **feature**:
-*   It ensures that the segmenter never "imagines" words or slang not approved in your curated source.
-*   It provides a high-performance baseline (95% accuracy for standard text) for a fraction of the computational cost.
+✅ **100% Deterministic** – Same input always produces identical output  
+✅ **Explainable** – Update dictionary/frequency = instant improvement  
+✅ **Ultra-Fast** – ~0.34ms/call (C port) vs. ~5-50ms for transformers  
+✅ **Portable** – Runs on embedded systems, mobile, web (WASM), and cloud  
+✅ **No Training** – Works immediately without GPU/annotation costs
 
-### Bridging the Engineering Gap (Beyond Computer Science)
-In many engineering fields—such as **Robotics, UAV/Drone systems, and Industrial Embedded Control**—there is effectively **zero support** for the Khmer language. While Computer Science has moved toward massive Machine Learning models, these "modern" solutions are impossible to run on the low-level microcontrollers and embedded processors that power real-world machinery.
+### Real-World Applications
 
-This creates a digital divide: Khmer becomes a "computer-only" language, excluded from the hardware that engineers use every day. 
+I've built this as **foundational infrastructure** for:
 
-`KhmerSegmenter` aims to break this barrier. By using the Viterbi algorithm—a purely mathematical and algorithmic approach—we provide a solution that can be implemented in **C, C++, or Rust** and run on devices with only a few megabytes (or even kilobytes) of memory. This project isn't just about NLP; it's about making Khmer a viable language for the next generation of physical engineering.
+- **ML Research**: Clean training data for Khmer LLMs by providing dictionary-accurate baselines
+- **Spellcheck/Grammar Tools**: Essential word boundary detection for text editors, IDEs, browsers, and mobile keyboards
+- **Production Systems**: Reliable segmentation for technical documentation, legal/medical applications, and embedded devices
 
-Ultimately, `KhmerSegmenter` is designed for **portability and control**. It is the "Swiss Army Knife" of Khmer NLP—small, sharp, and reliable.
+📖 **[Read the full design philosophy and use cases ▸](docs/DESIGN_PHILOSOPHY.md)**
 
 ## Installation
 
@@ -69,7 +63,7 @@ For users requiring maximum performance or embedding in C/C++/Zig applications, 
 *   **Documentation**: See [port/c/README.md](port/c/README.md).
 ## 1. Data Preparation (`scripts/prepare_data.py`)
 
-The project now uses a consolidated data pipeline to normalize text, generate frequencies, and compile binary dictionaries for all ports.
+I've built a consolidated data pipeline to normalize text, generate frequencies, and compile binary dictionaries for all ports.
 
 ### Pipeline Steps:
 1.  **Normalize**: Strips ZWS, ZWNJ, and fixes composite vowels/clusters in the corpus.
@@ -99,11 +93,11 @@ To add new words:
 
 ## 2. The Segmentation Algorithm
 
-For a detailed step-by-step explanation of the Viterbi algorithm, Normalization logic, and Rules used in this project, please refer to the **[Porting Guide & Algorithm Reference](port/README.md)**.
+For a detailed step-by-step explanation of the Viterbi algorithm, Normalization logic, and Rules I use in this project, please refer to the **[Porting Guide & Algorithm Reference](port/README.md)**.
 
 ## 3. Comparison with khmernltk
 
-We compared the performance and output of `KhmerSegmenter` against `khmernltk` using a complex sentence from a folktale.
+I compared the performance and output of `KhmerSegmenter` against `khmernltk` using a complex sentence from a folktale.
 
 ### Finding Unknown Words
 
@@ -117,7 +111,7 @@ This will generate `data/unknown_words_from_results.txt` showing the unknown wor
 
 ## 4. Benchmark & Performance Comparison
 
-We provide two benchmarks: one for **Real-Time Latency** (single sentence, micro-benchmark) and one for **Batch Throughput** (large corpus, macro-benchmark).
+I provide two benchmarks: one for **Real-Time Latency** (single sentence, micro-benchmark) and one for **Batch Throughput** (large corpus, macro-benchmark).
 
 ### Scenario A: Real-Time / Latency (Micro-benchmark)
 *Context: Processing a single complex paragraph repeated (simulates typing, chatbot, UI).*
@@ -161,7 +155,7 @@ Python-based segmenters (both ours and `khmernltk`) see **negative scaling** (0.
 **khmernltk Result (v1.5):**
 > `ក្រុមហ៊ុន` | `ទទួលបាន` | `ប្រាក់` | `ចំណូល` | ` ` | `១` | ` ` | `០០០` | ` ` | `០០០` | ` ` | `ដុល្លារ` | `ក្នុង` | `ឆ្នាំ` | `នេះ` | ` ` | `ខណៈ` | `ដែល` | `តម្លៃ` | `ភាគហ៊ុន` | `កើនឡើង` | ` ` | `៥%` | ` ` | `ស្មើនឹង` | ` ` | `50.` | `00$` | `។` | ` ` | `លោក` | ` ` | `ទេព` | ` ` | `សុវិចិត្រ` | ` ` | `នាយក` | `ប្រតិបត្តិ` | `ដែល` | `បញ្ចប់` | `ការសិក្សា` | `ពី` | `សាកលវិទ្យាល័យ` | `ភូមិន្ទ` | `ភ្នំពេញ` | ` ` | `(` | `ស.` | `ភ.` | `ភ.` | `ព.` | `)` | ` ` | `បាន` | `ថ្លែង` | `ថា` | ` ` | `ភាពជោគជ័យ` | `ផ្នែក` | `ហិរញ្ញវត្ថុ` | `នា` | `ឆ្នាំ` | `នេះ` | ` ` | `គឺជា` | `សក្ខីភាព` | `នៃ` | `កិច្ច` | `ខិតខំ` | `ប្រឹងប្រែង` | `របស់` | `ក្រុមការងារ` | `ទាំងមូល` | ` ` | `និង` | `ការជឿទុកចិត្ត` | `ពីសំណាក់` | `វិនិយោគិន` | `។`
 
-**KhmerSegmenter Result (Ours):**
+**KhmerSegmenter Result:**
 > `ក្រុមហ៊ុន` | `ទទួល` | `បាន` | `ប្រាក់ចំណូល` | ` ` | `១ ០០០ ០០០` | ` ` | `ដុល្លារ` | `ក្នុង` | `ឆ្នាំ` | `នេះ` | ` ` | `ខណៈ` | `ដែល` | `តម្លៃ` | `ភាគហ៊ុន` | `កើនឡើង` | ` ` | `៥` | `%` | ` ` | `ស្មើនឹង` | ` ` | `50.00` | `$` | `។` | ` ` | `លោក` | ` ` | `ទេព` | ` ` | `សុវិចិត្រ` | ` ` | `នាយក` | `ប្រតិបត្តិ` | `ដែល` | `បញ្ចប់` | `ការសិក្សា` | `ពី` | `សាកលវិទ្យាល័យ` | `ភូមិន្ទ` | `ភ្នំពេញ` | ` ` | `(` | `ស.ភ.ភ.ព.` | `)` | ` ` | `បាន` | `ថ្លែង` | `ថា` | ` ` | `ភាព` | `ជោគជ័យ` | `ផ្នែក` | `ហិរញ្ញវត្ថុ` | `នា` | `ឆ្នាំ` | `នេះ` | ` ` | `គឺជា` | `សក្ខីភាព` | `នៃ` | `កិច្ច` | `ខិតខំ` | `ប្រឹងប្រែង` | `របស់` | `ក្រុមការងារ` | `ទាំងមូល` | ` ` | `និង` | `ការ` | `ជឿ` | `ទុកចិត្ត` | `ពីសំណាក់` | `វិនិយោគិន` | `។`
 
 **Key Differences:**
