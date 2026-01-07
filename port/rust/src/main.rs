@@ -7,6 +7,35 @@ use rayon::prelude::*;
 
 use khmer_segmenter::khmer_segmenter::{KhmerSegmenter, SegmenterConfig};
 
+#[cfg(target_os = "linux")]
+fn get_memory_mb() -> f64 {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    
+    if let Ok(file) = File::open("/proc/self/status") {
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            if let Ok(l) = line {
+                if l.starts_with("VmRSS:") {
+                    let parts: Vec<&str> = l.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        if let Ok(kb) = parts[1].parse::<f64>() {
+                            return kb / 1024.0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    0.0
+}
+
+#[cfg(not(target_os = "linux"))]
+fn get_memory_mb() -> f64 {
+    0.0
+}
+
+
 
 fn main() -> io::Result<()> {
     // Config defaults
@@ -138,18 +167,27 @@ fn main() -> io::Result<()> {
                  }
                  if limit != -1 && current_limit <= 0 { break; }
             }
-            
-            eprintln!("DEBUG: Read {} lines", lines.len());
-            eprintln!("\n--- Input Benchmark ({} lines) ---", lines.len());
+                        eprintln!("DEBUG: Read {} lines", lines.len());
+             
+             // Calculate size
+             let total_bytes: usize = lines.iter().map(|l| l.len()).sum();
+             let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
+             
+             eprintln!("\n--- Input Benchmark ({} lines, {:.2} MB) ---", lines.len(), total_mb);
+             let start_mem = get_memory_mb();
+             eprintln!("Initial Memory: {:.2} MB", start_mem);
             
             // 1. Sequential
             eprint!("[1 Thread] Processing...");
+            let start_mem = get_memory_mb();
             let start = Instant::now();
             let results_seq: Vec<String> = lines.iter()
                 .map(|l| seg.segment(l, Some(" | ")))
                 .collect();
-            let duration = start.elapsed();
-            eprintln!(" Done in {:.3}s ({:.2} lines/sec)", duration.as_secs_f64(), lines.len() as f64 / duration.as_secs_f64());
+             let duration = start.elapsed();
+             let end_mem = get_memory_mb();
+             eprintln!(" Done in {:.3}s ({:.2} lines/sec)", duration.as_secs_f64(), lines.len() as f64 / duration.as_secs_f64());
+             eprintln!("Mem Delta: {:.2} MB", end_mem - start_mem);
             
             if let Some(out_path) = &output_file {
                  let mut f = File::create(out_path)?;
@@ -164,13 +202,16 @@ fn main() -> io::Result<()> {
             // 2. Parallel
             if threads > 1 {
                 eprint!("[{} Threads] Processing...", threads);
+                let start_mem = get_memory_mb();
                 let start = Instant::now();
                 let _results_par: Vec<String> = lines.par_iter()
                     .map(|l| seg.segment(l, Some(" | ")))
                     .collect();
-                let duration_par = start.elapsed();
-                eprintln!(" Done in {:.3}s ({:.2} lines/sec)", duration_par.as_secs_f64(), lines.len() as f64 / duration_par.as_secs_f64());
-                eprintln!("Speedup: {:.2}x", duration.as_secs_f64() / duration_par.as_secs_f64());
+                 let duration_par = start.elapsed();
+                 let end_mem = get_memory_mb();
+                 eprintln!(" Done in {:.3}s ({:.2} lines/sec)", duration_par.as_secs_f64(), lines.len() as f64 / duration_par.as_secs_f64());
+                 eprintln!("Mem Delta: {:.2} MB", end_mem - start_mem);
+                 eprintln!("Speedup: {:.2}x", duration.as_secs_f64() / duration_par.as_secs_f64());
             }
 
         } else {
@@ -180,7 +221,8 @@ fn main() -> io::Result<()> {
              let iterations_conc = 5000;
              
              println!("\n--- Benchmark Suite ---");
-             println!("Text Length: {} chars", text.chars().count()); // C uses strlen (bytes)? Yes.
+             println!("Text Length: {} chars", text.chars().count());
+             println!("Initial Memory: {:.2} MB", get_memory_mb());
              
              // Warmup
              let check = seg.segment(text, Some(" | "));
@@ -200,6 +242,7 @@ fn main() -> io::Result<()> {
              
              // Sequential
              println!("\n[Sequential] Running {} iterations...", iterations_seq);
+             let start_mem = get_memory_mb();
              let start = Instant::now();
              for _ in 0..iterations_seq {
                  let _ = seg.segment(text, None); // NULL separator in C means "no separator"? No, C uses default if NULL. BUT benchmark passes NULL?
@@ -208,18 +251,23 @@ fn main() -> io::Result<()> {
                  // In Rust segment: if separator is None, use ZWS.
              }
              let duration = start.elapsed();
+             let end_mem = get_memory_mb();
              println!("Time: {:.3}s", duration.as_secs_f64());
              println!("Avg: {:.3} ms/call", (duration.as_secs_f64() * 1000.0) / iterations_seq as f64);
+             println!("Mem Delta: {:.2} MB", end_mem - start_mem);
              
              // Concurrent
              println!("\n[Concurrent] Running {} iterations with {} threads...", iterations_conc, threads);
+             let start_mem = get_memory_mb();
              let start = Instant::now();
              (0..iterations_conc).into_par_iter().for_each(|_| {
                  let _ = seg.segment(text, None);
              });
              let duration = start.elapsed();
+             let end_mem = get_memory_mb();
              println!("Time: {:.3}s", duration.as_secs_f64());
              println!("Throughput: {:.2} calls/sec", iterations_conc as f64 / duration.as_secs_f64());
+             println!("Mem Delta: {:.2} MB", end_mem - start_mem);
         }
     } else if !input_files.is_empty() {
         let mut out: Box<dyn Write> = if let Some(path) = output_file {

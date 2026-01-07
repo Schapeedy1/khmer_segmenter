@@ -145,30 +145,20 @@ I provide two benchmarks: one for **Real-Time Latency** (single sentence, micro-
 ### Scenario A: Real-Time / Latency (Micro-benchmark)
 *Context: Processing a single complex paragraph repeated (simulates typing, chatbot, UI).*
 
-|Feature|khmernltk (Python)|KhmerSegmenter (Python)|KhmerSegmenter (C Port)|
-|:---|:---|:---|:---|
-|**Cold Start (Load)**|~1.83s|~0.30s (6x Faster)|**< 0.05s** (Instant)|
-|**Memory Usage**|~113.6 MB|~21.6 MB (5x Leaner)|**~4.8 MB** (Lowest)|
-|**Execution Speed (Seq)**|~5.77ms / call|~5.77ms / call (Baseline)|**~0.34ms / call** (WSL)|
-|**Concurrent (10 Workers)**|~318 calls / sec (GIL)|~447 calls / sec (GIL)|**~13,600 calls / sec** (WSL)|
-|**Concurrent Memory Delta**|~12.1 MB|~19.0 MB|**~0.17 MB** (Efficient)|
-|**Characteristics**|ML/Rule Hybrid|Pure Logic (Python)|**Pure Logic (SIMD Optimized)**|
+| Scenario | Metric | khmernltk | Python (v3) | C Port | Rust Port | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Micro-Benchmark** | Latency (Seq) | ~2.90 ms | ~2.21 ms | ~0.36 ms | **~0.34 ms** | Lower is better |
+| **Micro-Benchmark** | Throughput (4-Thread) | ~330 calls/s | ~503 calls/s | ~10,970 calls/s | **~10,909 calls/s** | Higher is better |
+| **Macro-Benchmark** | Throughput (4-Thread) | ~378 lines/s | ~585 lines/s | ~30,838 lines/s | **~31,250 lines/s** | File I/O + Process |
+| **Memory Usage** | Baseline (Init) | ~113 MB | ~36 MB | ~4.8 MB | **~2.2 MB** | Dict Load |
+| **Memory Usage** | Overhead (Conc) | ~12 MB | ~18 MB | ~0.2 MB | **~0.0 MB** | Efficiency |
 
-### Scenario B: Batch Processing / Throughput (Macro-benchmark)
-*Context: Processing large datasets (Khmer Wiki Corpus, 50,000 lines).*
-
-|Metric|khmernltk (Python)|KhmerSegmenter (Python)|KhmerSegmenter (C Port)|
-|:---|:---|:---|:---|
-|**Load Time**|~1.84s|~0.28s (6x Faster)|**< 0.05s** (Instant)|
-|**Memory Overhead**|~53.7 MB|~27.8 MB|**~23 MB**|
-|**Throughput (Seq)**|~429 lines / sec|~585 lines / sec|**~5,310 lines / sec** (12x)|
-|**Throughput (10 Threads)**|~391 lines / sec (GIL)|~553 lines / sec (GIL)|**~45,173 lines / sec** (115x)|
-|**Complex Input**|Splits numbers/acronyms|Correctly Groups (Rules)|**Correctly Groups**|
+*> Note: Benchmarks run on standard consumer hardware (Linux/Ryzen 7) with 4 threads.*
 
 ### Performance Analysis
 
 #### 1. Massive Throughput (C Port)
-With file-based benchmarking on WSL, the C port processes **45,173 lines per second** using 10 threads, compared to ~553 lines/sec in Python. This **~115x speedup** validates the linear scaling and SIMD optimizations of the C implementation on multi-core systems, making it suitable for high-volume ETL pipelines.
+With file-based benchmarking on Linux, the C port processes **~30,838 lines per second** using 4 threads, compared to ~553 lines/sec in Python. This **~55x speedup** validates the linear scaling and SIMD optimizations of the C implementation on multi-core systems, making it suitable for high-volume ETL pipelines.
 
 #### 2. Concurrency & The GIL
 Python-based segmenters (both ours and `khmernltk`) see **negative scaling** (0.9x speedup) when adding threads due to the **Global Interpreter Lock (GIL)** and overhead. Python is strictly limited to single-core CPU speeds for this workload.

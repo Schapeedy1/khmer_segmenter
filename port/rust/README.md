@@ -39,3 +39,15 @@ cargo run --release -- --benchmark
 # Run with input file
 cargo run --release -- --input ../../dataset/corpus.txt --benchmark
 ```
+
+## Performance
+
+
+
+| Metric | Performance | Notes |
+| :--- | :--- | :--- |
+| **Micro Latency** | ~0.34 ms | Single Thread (Seq) |
+| **Micro Throughput** | ~10,909 calls/s | 4 Threads |
+| **Macro Throughput** | ~31,250 lines/s | 4 Threads (File I/O) |
+| **Memory (Init)** | ~2.2 MB | Dictionary Load |
+| **Memory (Overhead)** | ~0.0 MB | Multi-thread overhead |
